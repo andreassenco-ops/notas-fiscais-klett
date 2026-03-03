@@ -133,6 +133,15 @@ function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
   }
 }
 
+// Persistent NFS-e status store (survives row refreshes)
+interface NfseState {
+  status: "pending" | "emitting" | "success" | "error";
+  chave?: string;
+  numero?: string;
+  error?: string;
+  pdfUrl?: string;
+}
+
 export default function NotasFiscais() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<NotaFiscalRow[]>([]);
@@ -141,11 +150,30 @@ export default function NotasFiscais() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [emittingLote, setEmittingLote] = useState(false);
   const [ambiente, setAmbiente] = useState<"1" | "2">("2");
+  const [nfseStore, setNfseStore] = useState<Map<string, NfseState>>(new Map());
   
   // Default to yesterday
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const [queryDate, setQueryDate] = useState<Date>(yesterday);
+
+  // Helper: apply nfseStore state to rows
+  const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
+    return rawRows.map((row) => {
+      const saved = store.get(row.PROTOCOLOC);
+      if (saved) {
+        return {
+          ...row,
+          _nfseStatus: saved.status,
+          _nfseChave: saved.chave,
+          _nfseNumero: saved.numero,
+          _nfseError: saved.error,
+          _nfsePdfUrl: saved.pdfUrl,
+        };
+      }
+      return row;
+    });
+  };
 
   const runQuery = async () => {
     setLoading(true);
@@ -165,7 +193,7 @@ export default function NotasFiscais() {
         return;
       }
 
-      if (result.rows) setRows(result.rows);
+      if (result.rows) setRows(applyNfseState(result.rows, nfseStore));
       setHasQueried(true);
       setSelectedRows(new Set());
       toast.success(`${result.rows?.length || 0} protocolos encontrados`);
@@ -224,10 +252,16 @@ export default function NotasFiscais() {
 
     setEmittingLote(true);
 
-    // Mark selected rows as emitting
+    // Mark selected rows as emitting (both in rows and store)
+    const emittingProtocols = selectedItems.map(r => r.PROTOCOLOC);
+    setNfseStore((prev) => {
+      const next = new Map(prev);
+      emittingProtocols.forEach(p => next.set(p, { status: "emitting" }));
+      return next;
+    });
     setRows((prev) =>
-      prev.map((row, idx) =>
-        selectedRows.has(filteredRows.indexOf(row))
+      prev.map((row) =>
+        emittingProtocols.includes(row.PROTOCOLOC)
           ? { ...row, _nfseStatus: "emitting" as const }
           : row
       )
@@ -244,7 +278,9 @@ export default function NotasFiscais() {
 
       const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
 
-      // Update rows with results and generate PDFs for successful ones
+      // Build new store entries and update rows
+      const newStoreEntries = new Map<string, NfseState>();
+      
       setRows((prev) =>
         prev.map((row) => {
           const match = result.results?.find((r: any) => r.protocolo === row.PROTOCOLOC);
@@ -260,18 +296,33 @@ export default function NotasFiscais() {
                 formaPagamento: match.dados.formaPagamento,
               });
             }
+            const state: NfseState = {
+              status: match.success ? "success" : "error",
+              chave: match.chNFSe,
+              numero: match.nNFSe || match.chNFSe?.slice(-10),
+              error: match.error,
+              pdfUrl,
+            };
+            newStoreEntries.set(row.PROTOCOLOC, state);
             return {
               ...row,
-              _nfseStatus: match.success ? ("success" as const) : ("error" as const),
-              _nfseChave: match.chNFSe,
-              _nfseNumero: match.nNFSe || match.chNFSe?.slice(-10),
-              _nfseError: match.error,
-              _nfsePdfUrl: pdfUrl,
+              _nfseStatus: state.status,
+              _nfseChave: state.chave,
+              _nfseNumero: state.numero,
+              _nfseError: state.error,
+              _nfsePdfUrl: state.pdfUrl,
             };
           }
           return row;
         })
       );
+
+      // Persist to store
+      setNfseStore((prev) => {
+        const next = new Map(prev);
+        newStoreEntries.forEach((v, k) => next.set(k, v));
+        return next;
+      });
 
       if (result.emitidas > 0) {
         toast.success(`${result.emitidas} NFS-e(s) emitida(s) com sucesso!`);
@@ -288,7 +339,11 @@ export default function NotasFiscais() {
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao emitir lote");
-      // Mark all as error
+      setNfseStore((prev) => {
+        const next = new Map(prev);
+        emittingProtocols.forEach(p => next.set(p, { status: "error", error: "Falha na comunicação" }));
+        return next;
+      });
       setRows((prev) =>
         prev.map((row) =>
           row._nfseStatus === "emitting"
