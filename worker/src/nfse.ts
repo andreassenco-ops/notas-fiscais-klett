@@ -279,8 +279,8 @@ async function signXml(xml: string): Promise<string> {
 // ─── API Client (mTLS) ───
 
 const API_URLS = {
-  1: 'https://sefin.nfse.gov.br/SefinNacional',       // Produção
-  2: 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional', // Homologação
+  1: 'https://sefin.nfse.gov.br/SefinNacional', // Produção
+  2: 'https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional', // Homologação (produção restrita)
 };
 
 function makeRequest(
