@@ -59,9 +59,11 @@ export interface NfseResult {
   success: boolean;
   chNFSe?: string;
   nNFSe?: string;
+  nDPS?: string;
   chDPS?: string;
   xmlRetorno?: string;
   error?: string;
+  jaEmitida?: boolean;
   detalhes?: unknown;
 }
 
@@ -501,21 +503,32 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
         success: true,
         chNFSe: parsed?.chaveAcesso,
         nNFSe,
+        nDPS: req.nDPS,
         chDPS: parsed?.idDps,
         xmlRetorno: nfseXml || response.body,
       };
     } else {
       // Erro - extrair mensagens
       let errorMessage = `HTTP ${response.statusCode}`;
+      let jaEmitida = false;
 
       if (parsed?.erros && Array.isArray(parsed.erros)) {
         const msgs = parsed.erros.map((e: any) =>
           [e.codigo, e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' - ')
         );
         errorMessage = msgs.join(' | ') || errorMessage;
+        // Detect already-emitted DPS
+        jaEmitida = parsed.erros.some((e: any) => 
+          /j[aá]\s*(foi\s*)?autoriz|DPS\s*j[aá]\s*process|duplici/i.test(
+            [e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' ')
+          )
+        );
       } else if (parsed?.erro) {
         const e = parsed.erro;
         errorMessage = [e.codigo, e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' - ') || errorMessage;
+        jaEmitida = /j[aá]\s*(foi\s*)?autoriz|DPS\s*j[aá]\s*process|duplici/i.test(
+          [e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' ')
+        );
       } else if (parsed?.message) {
         errorMessage = `HTTP ${response.statusCode} - ${parsed.message}`;
       } else {
@@ -526,6 +539,8 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       return {
         success: false,
         error: errorMessage,
+        nDPS: req.nDPS,
+        jaEmitida,
         detalhes: {
           httpStatus: response.statusCode,
           jsonRetorno: parsed || response.body,
