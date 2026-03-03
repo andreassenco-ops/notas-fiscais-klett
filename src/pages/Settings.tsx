@@ -207,9 +207,9 @@ export default function Settings() {
                 <Globe className="h-5 w-5 text-accent" />
               </div>
               <div>
-                <CardTitle className="text-lg">Conexão Local</CardTitle>
+                <CardTitle className="text-lg">Conexão Worker (Railway)</CardTitle>
                 <CardDescription>
-                  URL do Worker local (Cloudflare Tunnel)
+                  URL do Worker no Railway
                 </CardDescription>
               </div>
             </div>
@@ -217,7 +217,7 @@ export default function Settings() {
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input
-                placeholder="https://xxx.trycloudflare.com"
+                placeholder="https://seu-app.up.railway.app"
                 value={workerUrlInput}
                 onChange={(e) => setWorkerUrlInput(e.target.value)}
               />
@@ -225,7 +225,7 @@ export default function Settings() {
                 variant="outline"
                 onClick={() => {
                   setWorkerUrl(workerUrlInput);
-                  toast.success(workerUrlInput ? "Worker URL salva! O dashboard agora usa o banco local." : "Worker URL removida. Usando Lovable Cloud.");
+                  toast.success(workerUrlInput ? "Worker URL salva! Conectado ao Railway." : "Worker URL removida.");
                   window.location.reload();
                 }}
               >
@@ -235,8 +235,8 @@ export default function Settings() {
             </div>
             <p className="text-xs text-muted-foreground">
               {isWorkerConfigured() 
-                ? "✅ Conectado ao banco local via Worker" 
-                : "⚠️ Usando Lovable Cloud (Supabase). Configure a URL para usar o banco local."}
+                ? "✅ Conectado ao Worker via Railway" 
+                : "⚠️ Worker não configurado. Insira a URL do Railway."}
             </p>
           </CardContent>
         </Card>
