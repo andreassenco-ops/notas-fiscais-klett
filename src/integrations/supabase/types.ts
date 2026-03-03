@@ -88,6 +88,42 @@ export type Database = {
         }
         Relationships: []
       }
+      nfse_emitidas: {
+        Row: {
+          chave_acesso: string | null
+          cpf: string | null
+          created_at: string
+          id: string
+          ndps: string | null
+          numero_nota: string | null
+          paciente_nome: string | null
+          protocolo: string
+          valor: number | null
+        }
+        Insert: {
+          chave_acesso?: string | null
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          ndps?: string | null
+          numero_nota?: string | null
+          paciente_nome?: string | null
+          protocolo: string
+          valor?: number | null
+        }
+        Update: {
+          chave_acesso?: string | null
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          ndps?: string | null
+          numero_nota?: string | null
+          paciente_nome?: string | null
+          protocolo?: string
+          valor?: number | null
+        }
+        Relationships: []
+      }
       send_logs: {
         Row: {
           created_at: string
