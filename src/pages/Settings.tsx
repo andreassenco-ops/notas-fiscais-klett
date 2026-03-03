@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { formatDateTimeInSaoPaulo, formatDistanceInSaoPaulo } from "@/lib/timezone";
-import { getWorkerUrl, setWorkerUrl, isWorkerConfigured } from "@/lib/api-client";
+import { getWorkerUrl, isWorkerConfigured } from "@/lib/api-client";
 
 // Hook para buscar estatísticas de atualização do banco
 function useDatabaseStats() {
@@ -66,7 +66,7 @@ export default function Settings() {
     is_sending_enabled: true,
   });
 
-  const [workerUrlInput, setWorkerUrlInput] = useState(getWorkerUrl());
+  
 
   useEffect(() => {
     if (settings) {
@@ -199,45 +199,18 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Worker URL Configuration */}
+        {/* Worker Status */}
         <Card className="mb-6 border-accent/20 bg-accent/5">
-          <CardHeader className="pb-3">
+          <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-accent/10">
-                <Globe className="h-5 w-5 text-accent" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Conexão Worker (Railway)</CardTitle>
-                <CardDescription>
-                  URL do Worker no Railway
-                </CardDescription>
-              </div>
+              <Globe className="h-5 w-5 text-accent" />
+              <span className="font-medium">Conexão Worker (Railway)</span>
+              <span className="text-xs text-muted-foreground ml-auto">
+                {isWorkerConfigured() 
+                  ? "✅ Conectado automaticamente" 
+                  : "⏳ URL será carregada automaticamente do backend"}
+              </span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                placeholder="https://seu-app.up.railway.app"
-                value={workerUrlInput}
-                onChange={(e) => setWorkerUrlInput(e.target.value)}
-              />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setWorkerUrl(workerUrlInput);
-                  toast.success(workerUrlInput ? "Worker URL salva! Conectado ao Railway." : "Worker URL removida.");
-                  window.location.reload();
-                }}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                Salvar
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {isWorkerConfigured() 
-                ? "✅ Conectado ao Worker via Railway" 
-                : "⚠️ Worker não configurado. Insira a URL do Railway."}
-            </p>
           </CardContent>
         </Card>
 

@@ -1,44 +1,77 @@
 /**
  * API Client for Railway Worker backend
  * 
- * Uses WORKER_API_URL from Supabase secrets (via edge function proxy)
- * or a configurable URL stored in localStorage for development.
+ * Auto-fetches WORKER_API_URL from backend (edge function secret).
+ * No manual configuration needed.
  */
 
-const WORKER_URL_KEY = 'klett_worker_url';
+import { supabase } from "@/integrations/supabase/client";
+
+let cachedWorkerUrl: string | null = null;
+let fetchingPromise: Promise<string> | null = null;
 
 /**
- * Get the configured worker API URL.
- * Priority: localStorage override > edge function (WORKER_API_URL secret)
- * 
- * For production, the frontend calls the worker directly via the Railway URL.
- * The URL is stored in localStorage after being configured in Settings.
+ * Get the worker API URL.
+ * Auto-fetches from edge function (WORKER_API_URL secret) and caches in memory.
+ */
+async function resolveWorkerUrl(): Promise<string> {
+  // Return cached value
+  if (cachedWorkerUrl) return cachedWorkerUrl;
+
+  // Check localStorage legacy fallback
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('klett_worker_url');
+    if (stored) {
+      cachedWorkerUrl = stored.replace(/\/+$/, '');
+      return cachedWorkerUrl;
+    }
+  }
+
+  // Deduplicate concurrent fetches
+  if (fetchingPromise) return fetchingPromise;
+
+  fetchingPromise = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-control', {
+        body: { action: 'status' },
+      });
+      // The whatsapp-control function uses WORKER_API_URL internally
+      // We can extract the worker URL from the edge function environment
+      // Instead, let's use a simpler approach: call a dedicated endpoint
+    } catch {
+      // ignore
+    }
+
+    // Fetch the URL via a lightweight edge function call
+    try {
+      const { data, error } = await supabase.functions.invoke('get-worker-url');
+      if (data?.url) {
+        cachedWorkerUrl = String(data.url).replace(/\/+$/, '');
+        return cachedWorkerUrl;
+      }
+    } catch {
+      // ignore
+    }
+
+    throw new Error('Worker URL não disponível. Verifique o secret WORKER_API_URL no backend.');
+  })();
+
+  try {
+    return await fetchingPromise;
+  } finally {
+    fetchingPromise = null;
+  }
+}
+
+/**
+ * Sync getter for places that need it (non-async contexts)
  */
 export function getWorkerUrl(): string {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(WORKER_URL_KEY);
-    if (stored) return stored.replace(/\/+$/, '');
-  }
-  // Fallback: empty string means not configured
-  return '';
+  return cachedWorkerUrl || '';
 }
 
-/**
- * Set the worker API URL in localStorage
- */
-export function setWorkerUrl(url: string): void {
-  if (url) {
-    localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, ''));
-  } else {
-    localStorage.removeItem(WORKER_URL_KEY);
-  }
-}
-
-/**
- * Check if a worker URL is configured
- */
 export function isWorkerConfigured(): boolean {
-  return !!getWorkerUrl();
+  return !!cachedWorkerUrl;
 }
 
 /**
@@ -48,10 +81,7 @@ async function workerFetch<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const baseUrl = getWorkerUrl();
-  if (!baseUrl) {
-    throw new Error('Worker URL não configurado. Vá em Configurações para definir.');
-  }
+  const baseUrl = await resolveWorkerUrl();
 
   const url = `${baseUrl}${path}`;
   const response = await fetch(url, {
