@@ -95,7 +95,7 @@ const formatDate = (val: unknown) => {
 
 // ─── NFS-e Status Badge ───
 
-function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
+function NfseStatusBadge({ row, onDownloadPdf }: { row: NotaFiscalRow; onDownloadPdf: (row: NotaFiscalRow) => void }) {
   if (!row._nfseStatus) return null;
   
   switch (row._nfseStatus) {
@@ -104,19 +104,32 @@ function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
     case "success":
       return (
         <div className="flex items-center gap-1">
-          <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>
-          {row._nfsePdfUrl && (
+          <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida{row._nfseNumero ? ` #${row._nfseNumero}` : ''}</Badge>
+          {row._nfsePdfUrl ? (
             <a href={row._nfsePdfUrl} download={`nfse-${row._nfseNumero || row.PROTOCOLOC}.pdf`}>
               <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e">
                 <FileDown className="h-3.5 w-3.5 text-primary" />
               </Button>
             </a>
-          )}
+          ) : row._nfseChave ? (
+            <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e"
+              onClick={() => onDownloadPdf(row)}>
+              <FileDown className="h-3.5 w-3.5 text-primary" />
+            </Button>
+          ) : null}
         </div>
       );
     case "already_emitted":
       return (
-        <Badge className="gap-1 bg-yellow-600 text-white"><AlertTriangle className="h-3 w-3" />Já emitida</Badge>
+        <div className="flex items-center gap-1">
+          <Badge className="gap-1 bg-yellow-600 text-white"><AlertTriangle className="h-3 w-3" />Já emitida</Badge>
+          {row._nfseChave && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e"
+              onClick={() => onDownloadPdf(row)}>
+              <FileDown className="h-3.5 w-3.5 text-primary" />
+            </Button>
+          )}
+        </div>
       );
     case "error":
       return (
@@ -234,6 +247,46 @@ export default function NotasFiscais() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadPdf = async (row: NotaFiscalRow) => {
+    if (!row._nfseChave) {
+      toast.error("Chave de acesso não disponível para esta nota");
+      return;
+    }
+    const toastId = toast.loading("Baixando PDF da NFS-e...");
+    try {
+      const result = await api.fetchDanfse(row._nfseChave, Number(ambiente) as 1 | 2);
+      if (result.success && result.pdfBase64) {
+        const byteChars = atob(result.pdfBase64);
+        const byteNums = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' });
+        const pdfUrl = URL.createObjectURL(blob);
+        
+        // Update store and rows with the PDF URL
+        setNfseStore((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(row.PROTOCOLOC);
+          if (existing) next.set(row.PROTOCOLOC, { ...existing, pdfUrl });
+          return next;
+        });
+        setRows((prev) => prev.map((r) => 
+          r.PROTOCOLOC === row.PROTOCOLOC ? { ...r, _nfsePdfUrl: pdfUrl } : r
+        ));
+        
+        // Trigger download
+        const a = document.createElement('a');
+        a.href = pdfUrl;
+        a.download = `nfse-${row._nfseNumero || row.PROTOCOLOC}.pdf`;
+        a.click();
+        toast.success("PDF baixado com sucesso", { id: toastId });
+      } else {
+        toast.error(result.error || "Erro ao baixar PDF", { id: toastId });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao baixar PDF", { id: toastId });
     }
   };
 
@@ -633,7 +686,7 @@ export default function NotasFiscais() {
                           {row._nfseNumero || "—"}
                         </TableCell>
                         <TableCell>
-                          <NfseStatusBadge row={row} />
+                          <NfseStatusBadge row={row} onDownloadPdf={handleDownloadPdf} />
                         </TableCell>
                       </TableRow>
                     ))}
