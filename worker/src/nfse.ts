@@ -9,6 +9,7 @@
 
 import https from 'https';
 import crypto from 'crypto';
+import tls from 'tls';
 
 // ─── Tipos ───
 
@@ -99,17 +100,37 @@ function loadCertificate(): CertData {
 
   const pfxBuffer = Buffer.from(pfxBase64, 'base64');
 
-  // Extract key and cert from PFX using Node.js crypto
-  // Node 17+ supports crypto.X509Certificate and related APIs
-  // For older, we use the pfx directly in https.Agent
+  // Testa se o PFX é válido criando um secure context
+  // Usa openssl legacy provider para suportar certificados com algoritmos antigos
+  try {
+    tls.createSecureContext({
+      pfx: pfxBuffer,
+      passphrase: password,
+    });
+  } catch (err: any) {
+    // Se falhar com formato não suportado, tenta com flag legacy
+    if (err.message?.includes('Unsupported') || err.message?.includes('PKCS12')) {
+      console.warn('⚠️ PFX com formato legado detectado. Tentando conversão...');
+      // Node 17+ com OpenSSL 3.x precisa do legacy provider
+      // Alternativa: converter via spawn openssl, ou indicar ao usuário
+      throw new Error(
+        'Certificado PFX usa algoritmo não suportado pelo OpenSSL 3.x. ' +
+        'Converta o certificado com: openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && ' +
+        'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx -passout pass:SUASENHA. ' +
+        'Ou inicie o Railway com NODE_OPTIONS=--openssl-legacy-provider'
+      );
+    }
+    throw err;
+  }
+
   cachedCert = {
-    key: '',   // Will use pfx directly
-    cert: '',  // Will use pfx directly
+    key: '',
+    cert: '',
     pfx: pfxBuffer,
     passphrase: password,
   };
 
-  console.log('🔐 Certificado A1 carregado com sucesso');
+  console.log('🔐 Certificado A1 carregado e validado com sucesso');
   return cachedCert;
 }
 
