@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     }
 
     // Worker URL hardcoded (Railway)
-    const workerBaseUrl = "https://dede-zap-production.up.railway.app";
+    const workerBaseUrl = "https://notas-fiscais-klett-production.up.railway.app";
 
     // Proxy the request to the Worker
     const workerEndpoint = `${workerBaseUrl.replace(/\/$/, "")}/api/test-query`;
