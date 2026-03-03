@@ -1,9 +1,13 @@
 import { useState, useCallback } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -21,10 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface NotaFiscalRow {
   PROTOCOLOC: string;
@@ -39,11 +44,12 @@ interface NotaFiscalRow {
   // NFS-e state (client-side only)
   _nfseStatus?: "pending" | "emitting" | "success" | "error";
   _nfseChave?: string;
+  _nfseNumero?: string;
   _nfseError?: string;
   _nfsePdfUrl?: string;
 }
 
-function buildQuery(): string {
+function buildQuery(dateStr: string): string {
   return `SELECT 
   SOLICITACAO.LOCAL + '-' + dbo.MASCARA(SOLICITACAO.PROTOCOLO,'000000') AS PROTOCOLOC,
   SOLICITACAO_PAGAMENTOS.DATA [DATA DO PAGAMENTO],
@@ -58,7 +64,7 @@ INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTOS.SOLICITACAO_GUIA_ID
 INNER JOIN PACIENTE ON (PACIENTE.ID = SOLICITACAO.PACIENTE)
 INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
-WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN CAST(GETDATE()-1 AS DATE) AND CAST(GETDATE()-1 AS DATE)
+WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN '${dateStr}' AND '${dateStr}'
 GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
   SOLICITACAO_PAGAMENTOS.DATA,
   SOLICITACAO_GUIA.CONVENIO,
@@ -133,13 +139,19 @@ export default function NotasFiscais() {
   const [hasQueried, setHasQueried] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [emittingLote, setEmittingLote] = useState(false);
-  const [ambiente, setAmbiente] = useState<"1" | "2">("2"); // 2=Homologação
+  const [ambiente, setAmbiente] = useState<"1" | "2">("2");
+  
+  // Default to yesterday
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const [queryDate, setQueryDate] = useState<Date>(yesterday);
 
   const runQuery = async () => {
     setLoading(true);
+    const dateStr = format(queryDate, "yyyy-MM-dd");
     try {
       const { data: result, error } = await supabase.functions.invoke('test-sql-query', {
-        body: { sql_query: buildQuery(), limit: 1000 },
+        body: { sql_query: buildQuery(dateStr), limit: 1000 },
       });
 
       if (error) {
@@ -251,6 +263,7 @@ export default function NotasFiscais() {
               ...row,
               _nfseStatus: match.success ? ("success" as const) : ("error" as const),
               _nfseChave: match.chNFSe,
+              _nfseNumero: match.nNFSe || match.chNFSe?.slice(-10),
               _nfseError: match.error,
               _nfsePdfUrl: pdfUrl,
             };
@@ -447,14 +460,35 @@ export default function NotasFiscais() {
               Consulta de pagamentos do dia e emissão de NFS-e Nacional
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-end">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Data da consulta</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-44 justify-start text-left font-normal", !queryDate && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {queryDate ? format(queryDate, "dd/MM/yyyy") : "Selecionar data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={queryDate}
+                    onSelect={(d) => d && setQueryDate(d)}
+                    locale={ptBR}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
             <Button onClick={runQuery} disabled={loading}>
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Search className="h-4 w-4 mr-2" />
               )}
-              Consultar Hoje
+              Consultar
             </Button>
             {filteredRows.length > 0 && (
               <Button variant="outline" onClick={exportCSV}>
@@ -557,11 +591,11 @@ export default function NotasFiscais() {
             {!hasQueried ? (
               <div className="text-center py-12 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p>Clique em <strong>Consultar Hoje</strong> para buscar os pagamentos do dia no Autolac.</p>
+                <p>Selecione a data e clique em <strong>Consultar</strong> para buscar os pagamentos no Autolac.</p>
               </div>
             ) : filteredRows.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Nenhum pagamento encontrado para hoje.</p>
+                <p>Nenhum pagamento encontrado para {format(queryDate, "dd/MM/yyyy")}.</p>
               </div>
             ) : (
               <div className="rounded-md border overflow-x-auto">
@@ -581,6 +615,7 @@ export default function NotasFiscais() {
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
                       <TableHead className="text-right w-32">Valor Total</TableHead>
+                      <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -616,6 +651,9 @@ export default function NotasFiscais() {
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-center">
+                          {row._nfseNumero || "—"}
                         </TableCell>
                         <TableCell>
                           <NfseStatusBadge row={row} />

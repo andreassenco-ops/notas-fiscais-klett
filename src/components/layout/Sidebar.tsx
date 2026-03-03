@@ -1,18 +1,9 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
-  FileText,
-  List,
-  History,
   Settings,
-  Smartphone,
-  UserSearch,
-  CreditCard,
-  MessageCircle,
-  ExternalLink,
   LogOut,
   Receipt,
-  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -20,19 +11,8 @@ import klettLogo from "@/assets/klett-logo.png";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "WhatsApp", href: "/whatsapp", icon: Smartphone },
-  { name: "Modelos", href: "/models", icon: FileText },
-  { name: "Fila de Envios", href: "/queue", icon: List },
-  { name: "Histórico", href: "/history", icon: History },
-  { name: "Paciente", href: "/paciente", icon: UserSearch },
   { name: "Notas Fiscais", href: "/notas-fiscais", icon: Receipt },
   { name: "Configurações", href: "/settings", icon: Settings },
-];
-
-const shortcuts = [
-  { name: "Cartão Klett", href: "/cartao-klett", icon: CreditCard, external: false },
-  { name: "Certificado Base64", href: "/cert-to-base64.html", icon: KeyRound, external: true },
-  { name: "Fale Conosco", href: "https://klett.com.br/fale-conosco", icon: MessageCircle, external: true },
 ];
 
 export function Sidebar() {
@@ -77,45 +57,6 @@ export function Sidebar() {
           );
         })}
         
-        {/* Shortcuts divider */}
-        <div className="my-3 border-t border-sidebar-border" />
-        <span className="px-3 text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider mb-1">
-          Atalhos
-        </span>
-        
-        {shortcuts.map((item) => {
-          const isActive = !item.external && location.pathname === item.href;
-          
-          if (item.external) {
-            return (
-              <a
-                key={item.name}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="sidebar-link group"
-              >
-                <item.icon className="h-5 w-5" />
-                <span className="font-medium flex-1">{item.name}</span>
-                <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-              </a>
-            );
-          }
-          
-          return (
-            <Link
-              key={item.name}
-              to={item.href}
-              className={cn(
-                "sidebar-link",
-                isActive && "sidebar-link-active"
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              <span className="font-medium">{item.name}</span>
-            </Link>
-          );
-        })}
       </nav>
 
       {/* Footer */}
