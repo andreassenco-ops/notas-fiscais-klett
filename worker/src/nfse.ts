@@ -246,7 +246,7 @@ function buildDpsXml(req: NfseRequest): string {
       <trib>
         <tribMun>
           <tribISSQN>1</tribISSQN>
-          <cPaisResult>BR</cPaisResult>
+          
           <tpRetISSQN>1</tpRetISSQN>
         </tribMun>
         <totTrib>
