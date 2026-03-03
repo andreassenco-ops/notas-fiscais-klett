@@ -20,80 +20,43 @@ interface NotaFiscalRow {
   PROTOCOLOC: string;
   "DATA DO PAGAMENTO": string;
   CONVENIO: string;
-  DATANASCIMENTO: string;
-  EXAME: string;
-  EXAME_DESCRICAO: string;
   NOME: string;
   CPF: string;
   OBSERVAÇÃO: string;
-  "VALOR DO EXAME": number | null;
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
   [key: string]: unknown;
 }
 
 function buildQuery(): string {
-  // Usa GETDATE() para pegar a data de hoje no SQL Server
-  return `SELECT SOLICITACAO.LOCAL + '-' + dbo.MASCARA(SOLICITACAO.PROTOCOLO,'000000') AS PROTOCOLOC
- , SOLICITACAO_PAGAMENTOS.DATA [DATA DO PAGAMENTO]
- , SOLICITACAO_GUIA.CONVENIO
- , PACIENTE.DATANASCIMENTO
- , SOLICITACAO_EXAMES.EXAME as EXAME
- , LAUDOS.DESCRICAO EXAME_DESCRICAO
- , PACIENTE.NOME
- , PACIENTE.CPF
- , PACIENTE.NOME_PAI [OBSERVAÇÃO]
- , CASE WHEN TL.COMPOSTO = 'T' THEN
-         ( STL.PONTOS * PLANOS.MULTIPLICADOR)
-     ELSE
-         TL.PONTOS
-   END AS [VALOR DO EXAME]
- , SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO [FORMA DE PAGAMENTO]
- , SOLICITACAO_PAGAMENTOS.VALOR [VALOR TOTAL DO PAGAMENTO]
+  return `SELECT 
+  SOLICITACAO.LOCAL + '-' + dbo.MASCARA(SOLICITACAO.PROTOCOLO,'000000') AS PROTOCOLOC,
+  SOLICITACAO_PAGAMENTOS.DATA [DATA DO PAGAMENTO],
+  SOLICITACAO_GUIA.CONVENIO,
+  PACIENTE.NOME,
+  PACIENTE.CPF,
+  PACIENTE.NOME_PAI [OBSERVAÇÃO],
+  SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO [FORMA DE PAGAMENTO],
+  SOLICITACAO_PAGAMENTOS.VALOR [VALOR TOTAL DO PAGAMENTO]
 FROM SOLICITACAO
-INNER JOIN SOLICITACAO_EXAMES ON SOLICITACAO_EXAMES.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
-INNER JOIN SOLICITACAO_EXAMES_GUIA ON SOLICITACAO_EXAMES_GUIA.SOLICITACAO_EXAMES_ID = SOLICITACAO_EXAMES.ID AND
-                                      SOLICITACAO_EXAMES_GUIA.SOLICITACAO_GUIA_ID = SOLICITACAO_GUIA.ID
 INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTOS.SOLICITACAO_GUIA_ID
-LEFT JOIN SOLICITANTE ON (SOLICITANTE.ID = SOLICITACAO_GUIA.SOLICITANTE_ID)
-INNER JOIN LAUDOS ON (LAUDOS.ID = SOLICITACAO_EXAMES.EXAME)
-INNER JOIN PLANOS ON (PLANOS.PLANO = SOLICITACAO_GUIA.PLANO AND
-                      PLANOS.CONVENIO = SOLICITACAO_GUIA.CONVENIO)
-INNER JOIN CONVENIO ON (CONVENIO.IDENTIFICACAO = SOLICITACAO_GUIA.CONVENIO)
-INNER JOIN TABELALAUDO TL ON (TL.TABELA = PLANOS.TABELA AND
-                           TL.LAUDOS = LAUDOS.ID)
-LEFT JOIN SUBTABELALAUDO STL ON ( STL.TABELA = PLANOS.TABELA AND
-                              STL.LAUDOS = LAUDOS.ID)
-INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
 INNER JOIN PACIENTE ON (PACIENTE.ID = SOLICITACAO.PACIENTE)
+INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
 WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN CAST(GETDATE() AS DATE) AND CAST(GETDATE() AS DATE)
-Group by SOLICITACAO.LOCAL , SOLICITACAO.PROTOCOLO,  SOLICITACAO.DATA
- , SOLICITACAO_PAGAMENTOS.DATA
- , SOLICITACAO_GUIA.CONVENIO
- , SOLICITACAO_EXAMES.EXAME
- , SOLICITACAO_EXAMES.ORDEM
- , PACIENTE.NOME
- , PACIENTE.CPF
- , PACIENTE.NOME_PAI
- , SOLICITACAO_EXAMES.EXAME
-  , LAUDOS.ID
-  , LAUDOS.DESCRICAO
-  , PLANOS.MULTIPLICADOR, STL.LAUDOS
-  , TL.COMPOSTO
-  , TL.PONTOS
-  , STL.PONTOS
-, SOLICITACAO.DESCONTO
-, PACIENTE.DATANASCIMENTO
-, PACIENTE.IDADE
-, SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO
-, SOLICITACAO_PAGAMENTOS.VALOR`;
+GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
+  SOLICITACAO_PAGAMENTOS.DATA,
+  SOLICITACAO_GUIA.CONVENIO,
+  PACIENTE.NOME,
+  PACIENTE.CPF,
+  PACIENTE.NOME_PAI,
+  SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO,
+  SOLICITACAO_PAGAMENTOS.VALOR`;
 }
 
 export default function NotasFiscais() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<NotaFiscalRow[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
 
@@ -115,9 +78,8 @@ export default function NotasFiscais() {
       }
 
       if (result.rows) setRows(result.rows);
-      setTotalCount(result.totalCount || result.rowCount || result.rows?.length || 0);
       setHasQueried(true);
-      toast.success(`${result.rows?.length || 0} registros encontrados`);
+      toast.success(`${result.rows?.length || 0} protocolos encontrados`);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Erro ao consultar"
@@ -164,7 +126,7 @@ export default function NotasFiscais() {
     if (!filteredRows.length) return;
     const displayCols = [
       "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF",
-      "EXAME_DESCRICAO", "VALOR DO EXAME", "FORMA DE PAGAMENTO", "VALOR TOTAL DO PAGAMENTO", "OBSERVAÇÃO"
+      "FORMA DE PAGAMENTO", "VALOR TOTAL DO PAGAMENTO", "OBSERVAÇÃO"
     ];
     const header = displayCols.join(";");
     const csvRows = filteredRows.map((row) =>
@@ -184,10 +146,8 @@ export default function NotasFiscais() {
     URL.revokeObjectURL(url);
   };
 
-  // Calcula totais únicos por protocolo (valor total do pagamento)
-  const uniqueProtocols = new Set(filteredRows.map(r => r.PROTOCOLOC));
-  const totalValorExames = filteredRows.reduce((sum, row) => {
-    const val = Number(row["VALOR DO EXAME"]);
+  const totalValor = filteredRows.reduce((sum, row) => {
+    const val = Number(row["VALOR TOTAL DO PAGAMENTO"]);
     return sum + (isNaN(val) ? 0 : val);
   }, 0);
 
@@ -202,7 +162,7 @@ export default function NotasFiscais() {
               Notas Fiscais
             </h1>
             <p className="text-muted-foreground mt-1">
-              Consulta de pagamentos e exames do dia
+              Consulta de pagamentos do dia — 1 linha por protocolo
             </p>
           </div>
           <div className="flex gap-2">
@@ -225,23 +185,17 @@ export default function NotasFiscais() {
 
         {/* Summary Cards */}
         {hasQueried && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Protocolos</div>
-                <div className="text-2xl font-bold text-foreground">{uniqueProtocols.size}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground">Total Exames</div>
                 <div className="text-2xl font-bold text-foreground">{filteredRows.length}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground">Valor Total Exames</div>
-                <div className="text-2xl font-bold text-primary">{formatCurrency(totalValorExames)}</div>
+                <div className="text-sm text-muted-foreground">Valor Total</div>
+                <div className="text-2xl font-bold text-primary">{formatCurrency(totalValor)}</div>
               </CardContent>
             </Card>
           </div>
@@ -283,10 +237,8 @@ export default function NotasFiscais() {
                       <TableHead>Paciente</TableHead>
                       <TableHead className="w-36">CPF</TableHead>
                       <TableHead>Convênio</TableHead>
-                      <TableHead>Exame</TableHead>
-                      <TableHead className="text-right w-28">Valor Exame</TableHead>
                       <TableHead>Forma Pgto</TableHead>
-                      <TableHead className="text-right w-32">Valor Total Pgto</TableHead>
+                      <TableHead className="text-right w-32">Valor Total</TableHead>
                       <TableHead>Observação</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -309,12 +261,6 @@ export default function NotasFiscais() {
                           <Badge variant="secondary" className="text-xs whitespace-nowrap">
                             {row.CONVENIO || "—"}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate" title={row.EXAME_DESCRICAO}>
-                          {row.EXAME_DESCRICAO || "—"}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(row["VALOR DO EXAME"])}
                         </TableCell>
                         <TableCell className="text-sm">
                           {row["FORMA DE PAGAMENTO"] || "—"}
