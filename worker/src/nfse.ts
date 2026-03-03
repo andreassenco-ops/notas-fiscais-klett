@@ -51,6 +51,8 @@ export interface NfseRequest {
   serie?: string;         // Série (padrão "900")
   dCompet: string;        // Data competência YYYY-MM-DD
   formaPagamento?: string;
+  protocolo?: string;     // Para informações complementares
+  dataAtendimento?: string; // DD-MM-AAAA
 }
 
 export interface NfseResult {
@@ -73,7 +75,8 @@ export const KLETT_EMISSOR: NfseEmissor = {
 
 const KLETT_SERVICO_PADRAO: NfseServico = {
   cTribNac: '040201',        // 04.02.01 - Análises clínicas e congêneres
-  xDescServ: 'Análises Clínicas',
+  xDescServ: 'Serviços prestados',
+  cNBS: '123019300',         // 1.2301.93.00 - Serviços laboratoriais
   cLocPrestacao: '3140001',  // Mariana
 };
 
@@ -202,6 +205,24 @@ function buildDpsXml(req: NfseRequest): string {
   // Código IBGE da inscrição (tipo 2 = CNPJ)
   const idDPS = `${req.emissor.cMunIBGE}2${req.emissor.cnpj}${serie.padStart(5, '0')}${req.nDPS.padStart(15, '0')}`;
 
+  // Informações complementares
+  const infCompl = [];
+  if (req.protocolo) infCompl.push(`PROTOCOLO: ${req.protocolo}`);
+  if (req.formaPagamento) infCompl.push(`FORMA DE PAGAMENTO: ${req.formaPagamento}`);
+  if (req.dataAtendimento) infCompl.push(`DATA DO ATENDIMENTO: ${req.dataAtendimento}`);
+  const xInfComp = infCompl.length > 0 ? infCompl.join(', ') : '';
+
+  // Tributação federal
+  const aliqPIS = 0.65;
+  const aliqCOFINS = 3.00;
+  const vPIS = vServ * (aliqPIS / 100);
+  const vCOFINS = vServ * (aliqCOFINS / 100);
+
+  // Tributos aproximados (percentuais)
+  const pTotTribFed = 3.65;  // PIS + COFINS + outros federais
+  const pTotTribEst = 0;
+  const pTotTribMun = 3.00;  // ISS
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.00">
   <infDPS Id="DPS${idDPS}">
@@ -246,14 +267,28 @@ function buildDpsXml(req: NfseRequest): string {
       <trib>
         <tribMun>
           <tribISSQN>1</tribISSQN>
-          
           <tpRetISSQN>1</tpRetISSQN>
         </tribMun>
+        <tribFed>
+          <CST>01</CST>
+          <vBCPisCofins>${formatDecimal(vServ)}</vBCPisCofins>
+          <pAliqPis>${formatDecimal(aliqPIS)}</pAliqPis>
+          <pAliqCofins>${formatDecimal(aliqCOFINS)}</pAliqCofins>
+          <vPis>${formatDecimal(vPIS)}</vPis>
+          <vCofins>${formatDecimal(vCOFINS)}</vCofins>
+          <tpRetPisCofins>1</tpRetPisCofins>
+        </tribFed>
         <totTrib>
-          <indTotTrib>0</indTotTrib>
+          <indTotTrib>1</indTotTrib>
+          <pTotTribFed>${formatDecimal(pTotTribFed)}</pTotTribFed>
+          <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
+          <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
         </totTrib>
       </trib>
-    </valores>
+    </valores>${xInfComp ? `
+    <infCompl>
+      <xInfComp>${escapeXml(xInfComp)}</xInfComp>
+    </infCompl>` : ''}
   </infDPS>
 </DPS>`;
 
@@ -540,6 +575,9 @@ export async function emitirNFSeFromProtocolo(params: {
   nDPS: string;
 }): Promise<NfseResult> {
   const hoje = new Date().toISOString().slice(0, 10);
+  // Formatar data de atendimento como DD-MM-AAAA
+  const parts = hoje.split('-');
+  const dataAtend = `${parts[2]}-${parts[1]}-${parts[0]}`;
 
   return emitirNFSe({
     ambiente: params.ambiente || 2,
@@ -556,6 +594,8 @@ export async function emitirNFSeFromProtocolo(params: {
     nDPS: params.nDPS,
     dCompet: hoje,
     formaPagamento: params.formaPagamento,
+    protocolo: params.protocolo,
+    dataAtendimento: dataAtend,
   });
 }
 
