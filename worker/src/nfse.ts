@@ -171,8 +171,12 @@ function formatDecimal(value: number, decimals = 2): string {
 
 function buildDpsXml(req: NfseRequest): string {
   const serie = req.serie || '900';
+  // Calcular horário de Brasília (UTC-3) corretamente
   const now = new Date();
-  const dhEmi = now.toISOString().replace(/\.\d+Z$/, '-03:00');
+  const brasiliaOffset = -3 * 60; // UTC-3 em minutos
+  const brasiliaTime = new Date(now.getTime() + (brasiliaOffset + now.getTimezoneOffset()) * 60000);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dhEmi = `${brasiliaTime.getFullYear()}-${pad(brasiliaTime.getMonth() + 1)}-${pad(brasiliaTime.getDate())}T${pad(brasiliaTime.getHours())}:${pad(brasiliaTime.getMinutes())}:${pad(brasiliaTime.getSeconds())}-03:00`;
   
   // Calcular ISS
   const vServ = req.valores.vServ;
