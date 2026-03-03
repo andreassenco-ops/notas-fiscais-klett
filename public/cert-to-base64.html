@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Certificado PFX → Base64</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 1.3rem; }
+    input[type=file] { margin: 16px 0; }
+    textarea { width: 100%; height: 200px; font-family: monospace; font-size: 12px; }
+    button { padding: 8px 16px; cursor: pointer; margin-top: 8px; }
+    .info { color: #666; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>🔐 Converter Certificado PFX para Base64</h1>
+  <p class="info">Selecione o arquivo .pfx/.p12 do certificado A1. A conversão é feita 100% no seu navegador — nada é enviado para nenhum servidor.</p>
+  
+  <input type="file" id="pfxFile" accept=".pfx,.p12">
+  <br>
+  <textarea id="output" placeholder="O base64 aparecerá aqui..." readonly></textarea>
+  <br>
+  <button onclick="copyOutput()">📋 Copiar</button>
+  <span id="status"></span>
+
+  <script>
+    document.getElementById('pfxFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function() {
+        const base64 = btoa(
+          new Uint8Array(reader.result).reduce((s, b) => s + String.fromCharCode(b), '')
+        );
+        document.getElementById('output').value = base64;
+        document.getElementById('status').textContent = `✅ ${base64.length} caracteres gerados`;
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function copyOutput() {
+      const ta = document.getElementById('output');
+      ta.select();
+      navigator.clipboard.writeText(ta.value);
+      document.getElementById('status').textContent = '📋 Copiado!';
+    }
+  </script>
+</body>
+</html>
