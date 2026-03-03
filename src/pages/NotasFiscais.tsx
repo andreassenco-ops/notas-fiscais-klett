@@ -12,8 +12,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, FileText, Download } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 
 interface NotaFiscalRow {
@@ -26,6 +35,10 @@ interface NotaFiscalRow {
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
   [key: string]: unknown;
+  // NFS-e state (client-side only)
+  _nfseStatus?: "pending" | "emitting" | "success" | "error";
+  _nfseChave?: string;
+  _nfseError?: string;
 }
 
 function buildQuery(): string {
@@ -54,11 +67,60 @@ GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
   SOLICITACAO_PAGAMENTOS.VALOR`;
 }
 
+// ─── Helper functions ───
+
+const formatCurrency = (value: unknown) => {
+  if (value === null || value === undefined) return "—";
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
+const formatCPF = (cpf: string) => {
+  if (!cpf) return "—";
+  const cleaned = cpf.replace(/\D/g, "");
+  if (cleaned.length !== 11) return cpf;
+  return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9)}`;
+};
+
+const formatDate = (val: unknown) => {
+  if (!val) return "—";
+  try {
+    return new Date(String(val)).toLocaleDateString("pt-BR");
+  } catch {
+    return String(val);
+  }
+};
+
+// ─── NFS-e Status Badge ───
+
+function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
+  if (!row._nfseStatus) return null;
+  
+  switch (row._nfseStatus) {
+    case "emitting":
+      return <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" />Emitindo...</Badge>;
+    case "success":
+      return <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>;
+    case "error":
+      return (
+        <Badge variant="destructive" className="gap-1" title={row._nfseError}>
+          <XCircle className="h-3 w-3" />{row._nfseError?.slice(0, 30) || "Erro"}
+        </Badge>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function NotasFiscais() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<NotaFiscalRow[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [emittingLote, setEmittingLote] = useState(false);
+  const [ambiente, setAmbiente] = useState<"1" | "2">("2"); // 2=Homologação
 
   const runQuery = async () => {
     setLoading(true);
@@ -79,6 +141,7 @@ export default function NotasFiscais() {
 
       if (result.rows) setRows(result.rows);
       setHasQueried(true);
+      setSelectedRows(new Set());
       toast.success(`${result.rows?.length || 0} protocolos encontrados`);
     } catch (error) {
       toast.error(
@@ -94,31 +157,102 @@ export default function NotasFiscais() {
         Object.values(row).some(
           (val) =>
             val &&
-            String(val).toLowerCase().includes(searchTerm.toLowerCase())
+            typeof val === "string" &&
+            val.toLowerCase().includes(searchTerm.toLowerCase())
         )
       )
     : rows;
 
-  const formatCurrency = (value: unknown) => {
-    if (value === null || value === undefined) return "—";
-    const num = Number(value);
-    if (isNaN(num)) return String(value);
-    return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const toggleSelect = (idx: number) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   };
 
-  const formatCPF = (cpf: string) => {
-    if (!cpf) return "—";
-    const cleaned = cpf.replace(/\D/g, "");
-    if (cleaned.length !== 11) return cpf;
-    return `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9)}`;
+  const toggleSelectAll = () => {
+    if (selectedRows.size === filteredRows.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(filteredRows.map((_, i) => i)));
+    }
   };
 
-  const formatDate = (val: unknown) => {
-    if (!val) return "—";
+  const emitirSelecionadas = async () => {
+    if (selectedRows.size === 0) {
+      toast.warning("Selecione pelo menos um protocolo");
+      return;
+    }
+
+    const selectedItems = Array.from(selectedRows).map((idx) => filteredRows[idx]);
+    const invalidItems = selectedItems.filter(
+      (r) => !r.CPF || !r["VALOR TOTAL DO PAGAMENTO"] || Number(r["VALOR TOTAL DO PAGAMENTO"]) <= 0
+    );
+
+    if (invalidItems.length > 0) {
+      toast.error(`${invalidItems.length} protocolo(s) sem CPF ou valor válido`);
+      return;
+    }
+
+    setEmittingLote(true);
+
+    // Mark selected rows as emitting
+    setRows((prev) =>
+      prev.map((row, idx) =>
+        selectedRows.has(filteredRows.indexOf(row))
+          ? { ...row, _nfseStatus: "emitting" as const }
+          : row
+      )
+    );
+
     try {
-      return new Date(String(val)).toLocaleDateString("pt-BR");
-    } catch {
-      return String(val);
+      const items = selectedItems.map((r) => ({
+        protocolo: r.PROTOCOLOC,
+        pacienteNome: r.NOME,
+        cpf: String(r.CPF).replace(/\D/g, ""),
+        valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
+        formaPagamento: r["FORMA DE PAGAMENTO"],
+      }));
+
+      const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
+
+      // Update rows with results
+      setRows((prev) =>
+        prev.map((row) => {
+          const match = result.results?.find((r: any) => r.protocolo === row.PROTOCOLOC);
+          if (match) {
+            return {
+              ...row,
+              _nfseStatus: match.success ? ("success" as const) : ("error" as const),
+              _nfseChave: match.chNFSe,
+              _nfseError: match.error,
+            };
+          }
+          return row;
+        })
+      );
+
+      if (result.emitidas > 0) {
+        toast.success(`${result.emitidas} NFS-e(s) emitida(s) com sucesso!`);
+      }
+      if (result.erros > 0) {
+        toast.error(`${result.erros} erro(s) na emissão`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao emitir lote");
+      // Mark all as error
+      setRows((prev) =>
+        prev.map((row) =>
+          row._nfseStatus === "emitting"
+            ? { ...row, _nfseStatus: "error" as const, _nfseError: "Falha na comunicação" }
+            : row
+        )
+      );
+    } finally {
+      setEmittingLote(false);
+      setSelectedRows(new Set());
     }
   };
 
@@ -151,21 +285,26 @@ export default function NotasFiscais() {
     return sum + (isNaN(val) ? 0 : val);
   }, 0);
 
+  const selectedValor = Array.from(selectedRows).reduce((sum, idx) => {
+    const val = Number(filteredRows[idx]?.["VALOR TOTAL DO PAGAMENTO"]);
+    return sum + (isNaN(val) ? 0 : val);
+  }, 0);
+
   return (
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
               Notas Fiscais
             </h1>
             <p className="text-muted-foreground mt-1">
-              Consulta de pagamentos do dia — 1 linha por protocolo
+              Consulta de pagamentos do dia e emissão de NFS-e Nacional
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button onClick={runQuery} disabled={loading}>
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -185,7 +324,7 @@ export default function NotasFiscais() {
 
         {/* Summary Cards */}
         {hasQueried && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Protocolos</div>
@@ -198,7 +337,61 @@ export default function NotasFiscais() {
                 <div className="text-2xl font-bold text-primary">{formatCurrency(totalValor)}</div>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Selecionados</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {selectedRows.size > 0 ? `${selectedRows.size} — ${formatCurrency(selectedValor)}` : "Nenhum"}
+                </div>
+              </CardContent>
+            </Card>
           </div>
+        )}
+
+        {/* NFS-e Emission Controls */}
+        {hasQueried && filteredRows.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <Send className="h-5 w-5 text-primary" />
+                  <span className="font-medium">Emissão NFS-e Nacional</span>
+                  <Select value={ambiente} onValueChange={(v) => setAmbiente(v as "1" | "2")}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">
+                        <span className="flex items-center gap-2">
+                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
+                          Homologação
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="1">Produção</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={emitirSelecionadas}
+                  disabled={selectedRows.size === 0 || emittingLote}
+                  className="gap-2"
+                >
+                  {emittingLote ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
+                </Button>
+              </div>
+              {ambiente === "2" && (
+                <p className="text-xs text-yellow-600 mt-2 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Ambiente de homologação — notas não têm validade fiscal
+                </p>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {/* Results Table */}
@@ -232,6 +425,12 @@ export default function NotasFiscais() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectedRows.size === filteredRows.length && filteredRows.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
                       <TableHead className="w-28">Protocolo</TableHead>
                       <TableHead className="w-24">Data Pgto</TableHead>
                       <TableHead>Paciente</TableHead>
@@ -239,12 +438,19 @@ export default function NotasFiscais() {
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
                       <TableHead className="text-right w-32">Valor Total</TableHead>
-                      <TableHead>Observação</TableHead>
+                      <TableHead>NFS-e</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRows.map((row, idx) => (
-                      <TableRow key={idx}>
+                      <TableRow key={idx} className={selectedRows.has(idx) ? "bg-muted/50" : ""}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedRows.has(idx)}
+                            onCheckedChange={() => toggleSelect(idx)}
+                            disabled={row._nfseStatus === "success"}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-sm font-medium">
                           {row.PROTOCOLOC}
                         </TableCell>
@@ -268,8 +474,8 @@ export default function NotasFiscais() {
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
                         </TableCell>
-                        <TableCell className="text-sm max-w-[150px] truncate" title={row["OBSERVAÇÃO"] || ""}>
-                          {row["OBSERVAÇÃO"] || "—"}
+                        <TableCell>
+                          <NfseStatusBadge row={row} />
                         </TableCell>
                       </TableRow>
                     ))}
