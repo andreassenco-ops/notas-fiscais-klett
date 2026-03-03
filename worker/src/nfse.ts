@@ -278,10 +278,7 @@ function buildDpsXml(req: NfseRequest): string {
           <indTotTrib>0</indTotTrib>
         </totTrib>
       </trib>
-    </valores>${xInfComp ? `
-    <infCompl>
-      <xInfComp>${escapeXml(xInfComp)}</xInfComp>
-    </infCompl>` : ''}
+    </valores>
   </infDPS>
 </DPS>`;
 
