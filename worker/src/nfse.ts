@@ -287,16 +287,7 @@ function buildDpsXml(req: NfseRequest): string {
           </piscofins>
         </tribFed>
         <totTrib>
-          <vTotTrib>
-            <vTotTribFed>${formatDecimal(vTotTribFed)}</vTotTribFed>
-            <vTotTribEst>${formatDecimal(vTotTribEst)}</vTotTribEst>
-            <vTotTribMun>${formatDecimal(vTotTribMun)}</vTotTribMun>
-          </vTotTrib>
-          <pTotTrib>
-            <pTotTribFed>${formatDecimal(pTotTribFed)}</pTotTribFed>
-            <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
-            <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
-          </pTotTrib>
+          <indTotTrib>0</indTotTrib>
         </totTrib>
       </trib>
     </valores>
