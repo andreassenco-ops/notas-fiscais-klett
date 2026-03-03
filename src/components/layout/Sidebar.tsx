@@ -12,6 +12,7 @@ import {
   ExternalLink,
   LogOut,
   Receipt,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -30,6 +31,7 @@ const navigation = [
 
 const shortcuts = [
   { name: "Cartão Klett", href: "/cartao-klett", icon: CreditCard, external: false },
+  { name: "Certificado Base64", href: "/cert-to-base64.html", icon: KeyRound, external: true },
   { name: "Fale Conosco", href: "https://klett.com.br/fale-conosco", icon: MessageCircle, external: true },
 ];
 
