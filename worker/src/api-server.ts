@@ -10,6 +10,7 @@ import { config } from './config';
 import { getWhatsAppSession, updateWhatsAppSession, logEvent, getWhatsAppLockStatus } from './supabase';
 import { checkRealConnection, getConnectionStats, isConnected, disconnect, getWorkerId, forceClientReset, resumeAutoReconnect, isAutoReconnectBlocked, sendMessage, getCooldownStatus } from './whatsapp';
 import * as pgRoutes from './pg-routes';
+import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, NfseResult } from './nfse';
 
 const PORT = process.env.PORT || 3000;
 
@@ -849,6 +850,110 @@ async function handleLaudoPdf(req: http.IncomingMessage, res: http.ServerRespons
   }
 }
 
+// ─── NFS-e Handlers ───
+
+async function handleNfseEmitir(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+  for await (const chunk of req) body += chunk;
+
+  try {
+    const params = JSON.parse(body);
+    const { protocolo, pacienteNome, cpf, valor, formaPagamento, observacao, ambiente } = params;
+
+    if (!protocolo || !pacienteNome || !cpf || !valor) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Campos obrigatórios: protocolo, pacienteNome, cpf, valor' }));
+      return;
+    }
+
+    // Gerar nDPS sequencial baseado em timestamp
+    const nDPS = String(Date.now()).slice(-10);
+
+    const result = await emitirNFSeFromProtocolo({
+      protocolo,
+      pacienteNome,
+      cpf,
+      valor: Number(valor),
+      formaPagamento,
+      observacao,
+      ambiente: ambiente || 2,
+      nDPS,
+    });
+
+    res.writeHead(result.success ? 200 : 422, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+  } catch (error) {
+    console.error('❌ Erro no handler NFS-e:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+    }));
+  }
+}
+
+async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+  for await (const chunk of req) body += chunk;
+
+  try {
+    const { items, ambiente } = JSON.parse(body);
+
+    if (!Array.isArray(items) || items.length === 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'items deve ser um array não vazio' }));
+      return;
+    }
+
+    const results: Array<{ protocolo: string; success: boolean; chNFSe?: string; error?: string }> = [];
+    let emitidas = 0;
+    let erros = 0;
+
+    for (const item of items) {
+      const nDPS = String(Date.now()).slice(-10);
+      const result = await emitirNFSeFromProtocolo({
+        protocolo: item.protocolo,
+        pacienteNome: item.pacienteNome,
+        cpf: item.cpf,
+        valor: Number(item.valor),
+        formaPagamento: item.formaPagamento,
+        ambiente: ambiente || 2,
+        nDPS,
+      });
+
+      results.push({
+        protocolo: item.protocolo,
+        success: result.success,
+        chNFSe: result.chNFSe,
+        error: result.error,
+      });
+
+      if (result.success) emitidas++;
+      else erros++;
+
+      // Delay entre emissões para não sobrecarregar a API
+      if (items.indexOf(item) < items.length - 1) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      results,
+      total: items.length,
+      emitidas,
+      erros,
+    }));
+  } catch (error) {
+    console.error('❌ Erro no handler NFS-e Lote:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+    }));
+  }
+}
+
 /**
  * CORS headers
  */
@@ -890,6 +995,16 @@ export function startApiServer(): http.Server {
         await handleSendMessage(req, res);
       } else if ((url.pathname === '/api/laudo-pdf' || url.pathname === '/api/download-laudo') && req.method === 'POST') {
         await handleLaudoPdf(req, res);
+
+      // ─── NFS-e Nacional ───
+      } else if (url.pathname === '/api/nfse/status' && req.method === 'GET') {
+        setCorsHeaders(res);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ configured: isNfseConfigured() }));
+      } else if (url.pathname === '/api/nfse/emitir' && req.method === 'POST') {
+        await handleNfseEmitir(req, res);
+      } else if (url.pathname === '/api/nfse/emitir-lote' && req.method === 'POST') {
+        await handleNfseEmitirLote(req, res);
 
       // ─── PostgreSQL local routes (replaces Supabase SDK) ───
       } else if (url.pathname === '/api/pg/queue-stats' && req.method === 'GET') {

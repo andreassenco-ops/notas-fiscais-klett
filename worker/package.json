@@ -19,7 +19,9 @@
     "pg": "^8.13.0",
     "pino": "^9.6.0",
     "qrcode": "1.5.4",
-    "unzipper": "0.12.3"
+    "unzipper": "0.12.3",
+    "xml-crypto": "^6.0.0",
+    "@xmldom/xmldom": "^0.9.5"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.2",

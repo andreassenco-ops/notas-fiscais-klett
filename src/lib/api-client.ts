@@ -172,4 +172,40 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ sql_query: sqlQuery, limit: limit || 10 }),
     }),
+
+  // ─── NFS-e ───
+  getNfseStatus: () => workerFetch<{ configured: boolean }>('/api/nfse/status'),
+  emitirNfse: (params: {
+    protocolo: string;
+    pacienteNome: string;
+    cpf: string;
+    valor: number;
+    formaPagamento?: string;
+    observacao?: string;
+    ambiente?: 1 | 2;
+  }) => workerFetch<{
+    success: boolean;
+    chNFSe?: string;
+    chDPS?: string;
+    error?: string;
+    detalhes?: unknown;
+  }>('/api/nfse/emitir', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  }),
+  emitirNfseLote: (items: Array<{
+    protocolo: string;
+    pacienteNome: string;
+    cpf: string;
+    valor: number;
+    formaPagamento?: string;
+  }>, ambiente?: 1 | 2) => workerFetch<{
+    results: Array<{ protocolo: string; success: boolean; chNFSe?: string; error?: string }>;
+    total: number;
+    emitidas: number;
+    erros: number;
+  }>('/api/nfse/emitir-lote', {
+    method: 'POST',
+    body: JSON.stringify({ items, ambiente }),
+  }),
 };
