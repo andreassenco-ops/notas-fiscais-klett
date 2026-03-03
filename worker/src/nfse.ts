@@ -210,7 +210,7 @@ function buildDpsXml(req: NfseRequest): string {
     <dCompet>${req.dCompet}</dCompet>
     <tpEmit>1</tpEmit>
     <cLocEmi>${req.emissor.cMunIBGE}</cLocEmi>
-    <subst>2</subst>
+    
     <prest>
       <CNPJ>${req.emissor.cnpj}</CNPJ>
       <IM>${req.emissor.im}</IM>
