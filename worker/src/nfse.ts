@@ -288,7 +288,8 @@ function makeRequest(
   method: string,
   body: string,
   cert: CertData,
-  contentType = 'application/xml; charset=utf-8'
+  contentType = 'application/xml; charset=utf-8',
+  redirectCount = 0
 ): Promise<{ statusCode: number; body: string }> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
@@ -296,7 +297,7 @@ function makeRequest(
     const options: https.RequestOptions = {
       hostname: urlObj.hostname,
       port: 443,
-      path: urlObj.pathname,
+      path: `${urlObj.pathname}${urlObj.search || ''}`,
       method,
       headers: {
         'Content-Type': contentType,
@@ -309,10 +310,38 @@ function makeRequest(
       rejectUnauthorized: true,
     };
 
-    const req = https.request(options, (res) => {
+    const req = https.request(options, async (res) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => resolve({ statusCode: res.statusCode || 500, body: data }));
+      res.on('end', async () => {
+        const statusCode = res.statusCode || 500;
+
+        // Segue redirects (301/302/307/308) da API NFS-e
+        if ([301, 302, 307, 308].includes(statusCode)) {
+          const location = res.headers.location;
+          if (location && redirectCount < 5) {
+            const nextUrl = new URL(location, urlObj).toString();
+            console.warn(`↪️ Redirect ${statusCode}: ${url} -> ${nextUrl}`);
+            try {
+              const redirected = await makeRequest(
+                nextUrl,
+                method,
+                body,
+                cert,
+                contentType,
+                redirectCount + 1
+              );
+              resolve(redirected);
+              return;
+            } catch (err) {
+              reject(err);
+              return;
+            }
+          }
+        }
+
+        resolve({ statusCode, body: data });
+      });
     });
 
     req.on('error', reject);
