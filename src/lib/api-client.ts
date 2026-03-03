@@ -32,21 +32,11 @@ async function resolveWorkerUrl(): Promise<string> {
 
   fetchingPromise = (async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-control', {
-        body: { action: 'status' },
-      });
-      // The whatsapp-control function uses WORKER_API_URL internally
-      // We can extract the worker URL from the edge function environment
-      // Instead, let's use a simpler approach: call a dedicated endpoint
-    } catch {
-      // ignore
-    }
-
-    // Fetch the URL via a lightweight edge function call
-    try {
       const { data, error } = await supabase.functions.invoke('get-worker-url');
       if (data?.url) {
-        cachedWorkerUrl = String(data.url).replace(/\/+$/, '');
+        let url = String(data.url).replace(/\/+$/, '');
+        if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+        cachedWorkerUrl = url;
         return cachedWorkerUrl;
       }
     } catch {
