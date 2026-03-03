@@ -329,10 +329,9 @@ function makeRequest(
         'Accept': 'application/json',
         'Content-Length': Buffer.byteLength(body, 'utf-8'),
       },
-      // mTLS - preferir PEM key+cert quando disponível, fallback para PFX
-      ...(cert.key && cert.cert
-        ? { key: cert.key, cert: cert.cert }
-        : { pfx: cert.pfx, passphrase: cert.passphrase }),
+      // mTLS - usar sempre PFX para preservar cadeia completa do certificado cliente
+      pfx: cert.pfx,
+      passphrase: cert.passphrase,
       rejectUnauthorized: true,
     };
 
