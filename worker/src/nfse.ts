@@ -212,16 +212,11 @@ function buildDpsXml(req: NfseRequest): string {
   if (req.dataAtendimento) infCompl.push(`DATA DO ATENDIMENTO: ${req.dataAtendimento}`);
   const xInfComp = infCompl.length > 0 ? infCompl.join(', ') : '';
 
-  // Tributação federal
+  // Tributação federal (PIS/COFINS)
   const aliqPIS = 0.65;
   const aliqCOFINS = 3.00;
   const vPIS = vServ * (aliqPIS / 100);
   const vCOFINS = vServ * (aliqCOFINS / 100);
-
-  // Tributos aproximados (percentuais)
-  const pTotTribFed = 3.65;  // PIS + COFINS + outros federais
-  const pTotTribEst = 0;
-  const pTotTribMun = 3.00;  // ISS
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.00">
@@ -274,7 +269,6 @@ function buildDpsXml(req: NfseRequest): string {
             <CST>01</CST>
             <vBCPisCofins>${formatDecimal(vServ)}</vBCPisCofins>
             <pAliqPis>${formatDecimal(aliqPIS)}</pAliqPis>
-            <pAliqCofins>${formatDecimal(aliqCOFINS)}</pAliqCofins>
             <vPis>${formatDecimal(vPIS)}</vPis>
             <vCofins>${formatDecimal(vCOFINS)}</vCofins>
             <tpRetPisCofins>1</tpRetPisCofins>
@@ -282,9 +276,6 @@ function buildDpsXml(req: NfseRequest): string {
         </tribFed>
         <totTrib>
           <indTotTrib>0</indTotTrib>
-          <pTotTribFed>${formatDecimal(pTotTribFed)}</pTotTribFed>
-          <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
-          <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
         </totTrib>
       </trib>
     </valores>${xInfComp ? `
