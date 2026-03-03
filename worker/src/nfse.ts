@@ -378,12 +378,18 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       };
     } else {
       // Extrair mensagem de erro
-      const msgMatch = response.body.match(/<xMotivo>([^<]+)<\/xMotivo>/);
-      const cStatMatch = response.body.match(/<cStat>([^<]+)<\/cStat>/);
+      const msgMatch = response.body.match(/<xMotivo>([^<]+)<\/xMotivo>/i);
+      const cStatMatch = response.body.match(/<cStat>([^<]+)<\/cStat>/i);
+      const bodyPreview = String(response.body || '').replace(/\s+/g, ' ').trim().slice(0, 280);
+
+      let errorMessage = msgMatch?.[1] || `HTTP ${response.statusCode}`;
+      if (!msgMatch?.[1] && bodyPreview) {
+        errorMessage = `HTTP ${response.statusCode} - ${bodyPreview}`;
+      }
 
       return {
         success: false,
-        error: msgMatch?.[1] || `HTTP ${response.statusCode}`,
+        error: errorMessage,
         detalhes: {
           cStat: cStatMatch?.[1],
           httpStatus: response.statusCode,
