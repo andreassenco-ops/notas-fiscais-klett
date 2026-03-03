@@ -350,19 +350,28 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       }
     }
 
-    // 4. Enviar para API via mTLS
-    const apiUrl = `${API_URLS[request.ambiente]}/nfse`;
-    console.log(`📤 Enviando para ${apiUrl}...`);
+    // 4. Enviar para API via mTLS (com fallback de endpoint/content-type)
+    const baseUrl = API_URLS[request.ambiente];
+    const attempts = [
+      { url: `${baseUrl}/nfse`, contentType: 'application/xml; charset=utf-8' },
+      { url: `${baseUrl}`, contentType: 'application/xml; charset=utf-8' },
+      { url: `${baseUrl}/nfse`, contentType: 'text/xml; charset=utf-8' },
+      { url: `${baseUrl}`, contentType: 'text/xml; charset=utf-8' },
+    ];
 
-    let response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'application/xml; charset=utf-8');
+    let response = { statusCode: 599, body: '' };
+    for (const attempt of attempts) {
+      console.log(`📤 Enviando para ${attempt.url} (${attempt.contentType})...`);
+      response = await makeRequest(attempt.url, 'POST', signedXml, cert, attempt.contentType);
+      console.log(`📥 Resposta tentativa: HTTP ${response.statusCode} (${response.body.length} bytes)`);
 
-    // Alguns ambientes exigem content-type específico; tenta fallback em HTTP 415
-    if (response.statusCode === 415) {
-      console.warn('⚠️ HTTP 415 com application/xml; tentando text/xml...');
-      response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'text/xml; charset=utf-8');
+      // Para no primeiro resultado que não seja "formato/rota" inválido
+      if (response.statusCode < 400 || (response.statusCode !== 404 && response.statusCode !== 415)) {
+        break;
+      }
     }
 
-    console.log(`📥 Resposta: HTTP ${response.statusCode} (${response.body.length} bytes)`);
+    console.log(`📦 Resposta final: HTTP ${response.statusCode} (${response.body.length} bytes)`);
 
     // 5. Processar resposta
     if (response.statusCode >= 200 && response.statusCode < 300) {
