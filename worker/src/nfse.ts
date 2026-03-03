@@ -58,6 +58,7 @@ export interface NfseRequest {
 export interface NfseResult {
   success: boolean;
   chNFSe?: string;
+  nNFSe?: string;
   chDPS?: string;
   xmlRetorno?: string;
   error?: string;
@@ -487,9 +488,19 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
         } catch { /* ignore */ }
       }
 
+      // Extract nNFSe from XML if available
+      let nNFSe: string | undefined;
+      const nNFSeMatch = nfseXml.match(/<nNFSe>(\d+)<\/nNFSe>/);
+      if (nNFSeMatch) {
+        nNFSe = nNFSeMatch[1];
+      } else if (parsed?.nNFSe) {
+        nNFSe = String(parsed.nNFSe);
+      }
+
       return {
         success: true,
         chNFSe: parsed?.chaveAcesso,
+        nNFSe,
         chDPS: parsed?.idDps,
         xmlRetorno: nfseXml || response.body,
       };
