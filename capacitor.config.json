@@ -1,0 +1,9 @@
+{
+  "appId": "app.lovable.6e63ca2de881471ca10054cb0f7e18d7",
+  "appName": "qr-link-sender",
+  "webDir": "dist",
+  "server": {
+    "url": "https://6e63ca2d-e881-471c-a100-54cb0f7e18d7.lovableproject.com?forceHideBadge=true",
+    "cleartext": true
+  }
+}

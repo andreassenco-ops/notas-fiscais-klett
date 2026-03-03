@@ -1,0 +1,275 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* KLETT - Laboratório de Análises Clínicas e Toxicológicas
+   Visual identity based on official Klett branding
+   Colors: Dark teal, Teal accent, Coral red accent
+*/
+
+@layer base {
+  :root {
+    /* Core backgrounds - Clean white/gray */
+    --background: 210 20% 98%;
+    --foreground: 200 25% 20%;
+
+    /* Cards and surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 200 25% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 25% 20%;
+
+    /* Primary - Klett Dark Teal */
+    --primary: 197 40% 30%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Light gray */
+    --secondary: 200 15% 95%;
+    --secondary-foreground: 200 25% 20%;
+
+    /* Muted surfaces */
+    --muted: 200 15% 95%;
+    --muted-foreground: 200 10% 45%;
+
+    /* Accent - Klett Teal (the circle in logo) */
+    --accent: 175 100% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Klett Coral/Red accent (the small circle in logo) */
+    --klett-coral: 5 70% 55%;
+    --klett-coral-foreground: 0 0% 100%;
+
+    /* Status colors */
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 5 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* WhatsApp brand color */
+    --whatsapp: 142 70% 49%;
+    --whatsapp-foreground: 0 0% 100%;
+
+    /* UI elements */
+    --border: 200 20% 88%;
+    --input: 200 20% 88%;
+    --ring: 175 100% 35%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar - Klett Dark Teal */
+    --sidebar-background: 197 40% 25%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 175 100% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 197 35% 30%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 197 30% 35%;
+    --sidebar-ring: 175 100% 40%;
+
+    /* Chart colors */
+    --chart-1: 197 40% 30%;
+    --chart-2: 175 100% 35%;
+    --chart-3: 5 70% 55%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 160 84% 39%;
+  }
+
+  .dark {
+    --background: 200 25% 8%;
+    --foreground: 0 0% 95%;
+
+    --card: 200 25% 12%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 200 25% 12%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 175 80% 45%;
+    --primary-foreground: 200 25% 10%;
+
+    --secondary: 200 20% 18%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 200 20% 18%;
+    --muted-foreground: 200 15% 60%;
+
+    --accent: 175 100% 40%;
+    --accent-foreground: 0 0% 100%;
+
+    --klett-coral: 5 70% 55%;
+    --klett-coral-foreground: 0 0% 100%;
+
+    --success: 160 70% 45%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 5 60% 45%;
+    --destructive-foreground: 0 0% 95%;
+
+    --whatsapp: 142 70% 49%;
+    --whatsapp-foreground: 0 0% 100%;
+
+    --border: 200 20% 20%;
+    --input: 200 20% 20%;
+    --ring: 175 100% 40%;
+
+    --sidebar-background: 200 30% 10%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 175 80% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 200 25% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 200 20% 18%;
+    --sidebar-ring: 175 80% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Status badges */
+  .status-connected {
+    @apply bg-success text-success-foreground;
+  }
+  
+  .status-pending {
+    @apply bg-warning text-warning-foreground;
+  }
+  
+  .status-error {
+    @apply bg-destructive text-destructive-foreground;
+  }
+  
+  .status-disconnected {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5;
+  }
+
+  /* WhatsApp themed elements */
+  .whatsapp-gradient {
+    @apply bg-gradient-to-br from-whatsapp to-emerald-600;
+  }
+
+  /* Pulse animation for QR code */
+  .pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Table row hover */
+  .table-row-hover {
+    @apply transition-colors hover:bg-muted/50;
+  }
+
+  /* Sidebar link */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/80 transition-all duration-200;
+    @apply hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  }
+
+  .sidebar-link-active {
+    @apply bg-sidebar-primary text-sidebar-primary-foreground;
+    @apply hover:bg-sidebar-primary hover:text-sidebar-primary-foreground;
+  }
+
+  /* Stats card */
+  .stats-card {
+    @apply relative overflow-hidden rounded-xl border bg-card p-6 shadow-sm;
+  }
+
+  .stats-card::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent;
+  }
+
+  /* QR Code container */
+  .qr-container {
+    @apply relative p-6 rounded-2xl bg-white shadow-xl;
+    @apply ring-4 ring-whatsapp/20;
+  }
+
+  /* Data table styles */
+  .data-table {
+    @apply w-full text-sm;
+  }
+
+  .data-table th {
+    @apply text-left font-medium text-muted-foreground uppercase tracking-wider text-xs py-3 px-4;
+  }
+
+  .data-table td {
+    @apply py-3 px-4 align-middle;
+  }
+
+  .data-table tr {
+    @apply border-b border-border/50 last:border-0;
+  }
+}
+
+@layer utilities {
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide up animation */
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Number counter animation */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
