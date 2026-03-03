@@ -10,6 +10,7 @@
 import https from 'https';
 import crypto from 'crypto';
 import tls from 'tls';
+import zlib from 'zlib';
 
 // ─── Tipos ───
 
@@ -288,9 +289,9 @@ function makeRequest(
   method: string,
   body: string,
   cert: CertData,
-  contentType = 'application/xml; charset=utf-8',
+  contentType = 'application/json',
   redirectCount = 0
-): Promise<{ statusCode: number; body: string }> {
+): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
 
@@ -301,7 +302,7 @@ function makeRequest(
       method,
       headers: {
         'Content-Type': contentType,
-        'Accept': 'application/xml, text/xml, */*',
+        'Accept': 'application/json',
         'Content-Length': Buffer.byteLength(body, 'utf-8'),
       },
       // mTLS - certificado A1
@@ -316,21 +317,14 @@ function makeRequest(
       res.on('end', async () => {
         const statusCode = res.statusCode || 500;
 
-        // Segue redirects (301/302/307/308) da API NFS-e
+        // Segue redirects (301/302/307/308)
         if ([301, 302, 307, 308].includes(statusCode)) {
           const location = res.headers.location;
           if (location && redirectCount < 5) {
             const nextUrl = new URL(location, urlObj).toString();
             console.warn(`↪️ Redirect ${statusCode}: ${url} -> ${nextUrl}`);
             try {
-              const redirected = await makeRequest(
-                nextUrl,
-                method,
-                body,
-                cert,
-                contentType,
-                redirectCount + 1
-              );
+              const redirected = await makeRequest(nextUrl, method, body, cert, contentType, redirectCount + 1);
               resolve(redirected);
               return;
             } catch (err) {
@@ -340,14 +334,26 @@ function makeRequest(
           }
         }
 
-        resolve({ statusCode, body: data });
+        resolve({ statusCode, body: data, headers: res.headers as Record<string, string | string[] | undefined> });
       });
     });
 
     req.on('error', reject);
-    req.write(body);
+    if (body) req.write(body);
     req.end();
   });
+}
+
+// ─── GZip + Base64 helper ───
+
+function gzipBase64(input: string): string {
+  const gzipped = zlib.gzipSync(Buffer.from(input, 'utf-8'));
+  return gzipped.toString('base64');
+}
+
+function ungzipBase64(b64: string): string {
+  const buf = Buffer.from(b64, 'base64');
+  return zlib.gunzipSync(buf).toString('utf-8');
 }
 
 // ─── Emissão ───
@@ -379,54 +385,70 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       }
     }
 
-    // 4. Enviar para API via mTLS
+    // 4. Compactar XML com GZip e codificar em Base64
+    const dpsXmlGZipB64 = gzipBase64(signedXml);
+    console.log(`📦 DPS compactado: ${dpsXmlGZipB64.length} chars (base64 gzip)`);
+
+    // 5. Montar body JSON conforme especificação da API
+    const jsonBody = JSON.stringify({ dpsXmlGZipB64 });
+
+    // 6. Enviar para API via mTLS
     const apiUrl = `${API_URLS[request.ambiente]}/nfse`;
-    console.log(`📤 Enviando para ${apiUrl}...`);
-    console.log(`📤 XML (primeiros 500 chars): ${signedXml.substring(0, 500)}`);
+    console.log(`📤 Enviando POST ${apiUrl} (application/json, ${jsonBody.length} bytes)...`);
 
-    let response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'application/xml; charset=utf-8');
+    const response = await makeRequest(apiUrl, 'POST', jsonBody, cert, 'application/json');
 
-    // Log detalhado da resposta para diagnóstico
     console.log(`📥 Resposta: HTTP ${response.statusCode}`);
     console.log(`📥 Body (primeiros 500 chars): ${response.body.substring(0, 500)}`);
 
-    // Fallback: se 415 tentar text/xml
-    if (response.statusCode === 415) {
-      console.warn('⚠️ HTTP 415, tentando text/xml...');
-      response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'text/xml; charset=utf-8');
-      console.log(`📥 Retry: HTTP ${response.statusCode} - ${response.body.substring(0, 500)}`);
+    // 7. Processar resposta JSON
+    let parsed: any;
+    try {
+      parsed = JSON.parse(response.body);
+    } catch {
+      parsed = null;
     }
 
-    // 5. Processar resposta
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      // Extrair chave da NFS-e da resposta
-      const chNFSeMatch = response.body.match(/<chNFSe>([^<]+)<\/chNFSe>/);
-      const chDPSMatch = response.body.match(/<chDPS>([^<]+)<\/chDPS>/);
+    if (response.statusCode === 201 || (response.statusCode === 200 && parsed?.chaveAcesso)) {
+      // Sucesso - NFS-e gerada
+      let nfseXml = '';
+      if (parsed?.nfseXmlGZipB64) {
+        try {
+          nfseXml = ungzipBase64(parsed.nfseXmlGZipB64);
+        } catch { /* ignore */ }
+      }
 
       return {
         success: true,
-        chNFSe: chNFSeMatch?.[1],
-        chDPS: chDPSMatch?.[1],
-        xmlRetorno: response.body,
+        chNFSe: parsed?.chaveAcesso,
+        chDPS: parsed?.idDps,
+        xmlRetorno: nfseXml || response.body,
       };
     } else {
-      // Extrair mensagem de erro
-      const msgMatch = response.body.match(/<xMotivo>([^<]+)<\/xMotivo>/i);
-      const cStatMatch = response.body.match(/<cStat>([^<]+)<\/cStat>/i);
-      const bodyPreview = String(response.body || '').replace(/\s+/g, ' ').trim().slice(0, 280);
+      // Erro - extrair mensagens
+      let errorMessage = `HTTP ${response.statusCode}`;
 
-      let errorMessage = msgMatch?.[1] || `HTTP ${response.statusCode}`;
-      if (!msgMatch?.[1] && bodyPreview) {
-        errorMessage = `HTTP ${response.statusCode} - ${bodyPreview}`;
+      if (parsed?.erros && Array.isArray(parsed.erros)) {
+        const msgs = parsed.erros.map((e: any) =>
+          [e.codigo, e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' - ')
+        );
+        errorMessage = msgs.join(' | ') || errorMessage;
+      } else if (parsed?.erro) {
+        const e = parsed.erro;
+        errorMessage = [e.codigo, e.mensagem, e.descricao, e.complemento].filter(Boolean).join(' - ') || errorMessage;
+      } else if (parsed?.message) {
+        errorMessage = `HTTP ${response.statusCode} - ${parsed.message}`;
+      } else {
+        const bodyPreview = response.body.replace(/\s+/g, ' ').trim().slice(0, 280);
+        if (bodyPreview) errorMessage = `HTTP ${response.statusCode} - ${bodyPreview}`;
       }
 
       return {
         success: false,
         error: errorMessage,
         detalhes: {
-          cStat: cStatMatch?.[1],
           httpStatus: response.statusCode,
-          xmlRetorno: response.body,
+          jsonRetorno: parsed || response.body,
         },
       };
     }
@@ -446,19 +468,26 @@ export async function consultarNFSe(chaveAcesso: string, ambiente: 1 | 2 = 2): P
     const cert = loadCertificate();
     const apiUrl = `${API_URLS[ambiente]}/nfse/${chaveAcesso}`;
 
-    const response = await makeRequest(apiUrl, 'GET', '', cert);
+    const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/json');
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    let parsed: any;
+    try { parsed = JSON.parse(response.body); } catch { parsed = null; }
+
+    if (response.statusCode >= 200 && response.statusCode < 300 && parsed?.chaveAcesso) {
+      let nfseXml = '';
+      if (parsed?.nfseXmlGZipB64) {
+        try { nfseXml = ungzipBase64(parsed.nfseXmlGZipB64); } catch { /* ignore */ }
+      }
       return {
         success: true,
-        chNFSe: chaveAcesso,
-        xmlRetorno: response.body,
+        chNFSe: parsed.chaveAcesso,
+        xmlRetorno: nfseXml || response.body,
       };
     } else {
       return {
         success: false,
-        error: `HTTP ${response.statusCode}`,
-        detalhes: { xmlRetorno: response.body },
+        error: parsed?.erro?.mensagem || `HTTP ${response.statusCode}`,
+        detalhes: { jsonRetorno: parsed || response.body },
       };
     }
   } catch (error) {
@@ -484,7 +513,7 @@ export async function emitirNFSeFromProtocolo(params: {
   const hoje = new Date().toISOString().slice(0, 10);
 
   return emitirNFSe({
-    ambiente: params.ambiente || 2, // Homologação por padrão
+    ambiente: params.ambiente || 2,
     emissor: KLETT_EMISSOR,
     tomador: {
       cpf: params.cpf,
