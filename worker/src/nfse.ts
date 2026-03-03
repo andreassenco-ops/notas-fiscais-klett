@@ -227,12 +227,14 @@ function buildDpsXml(req: NfseRequest): string {
       ${tomadorEmail}
     </toma>
     <serv>
+      <locPrest>
+        <cLocPrestacao>${req.servico.cLocPrestacao}</cLocPrestacao>
+      </locPrest>
       <cServ>
         <cTribNac>${req.servico.cTribNac}</cTribNac>
         <xDescServ>${escapeXml(req.servico.xDescServ)}</xDescServ>
         <cNBS>${req.servico.cNBS || ''}</cNBS>
       </cServ>
-      <cLocPrestacao>${req.servico.cLocPrestacao}</cLocPrestacao>
     </serv>
     <valores>
       <vServPrest>
