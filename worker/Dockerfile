@@ -22,15 +22,19 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Criar diretório de trabalho
 WORKDIR /app
 
-# Copiar arquivos de dependências
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copiar arquivos de dependências do worker
+COPY worker/package*.json ./
+COPY worker/tsconfig.json ./
 
 # Instalar dependências
 RUN npm install
 
-# Copiar código fonte
-COPY src ./src
+# Copiar código fonte do worker
+COPY worker/src ./src
+
+# Copiar bot files
+COPY worker/bot ./bot
+COPY worker/bot.js ./bot.js
 
 # Build
 RUN npm run build

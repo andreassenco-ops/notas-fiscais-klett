@@ -1,0 +1,11 @@
+# Railway config - aponta para o worker
+[build]
+builder = "dockerfile"
+dockerfilePath = "worker/Dockerfile"
+watchPatterns = ["worker/**"]
+
+[deploy]
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/health"
+healthcheckTimeout = 300
