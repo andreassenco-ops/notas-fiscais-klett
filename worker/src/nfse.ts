@@ -241,7 +241,6 @@ function buildDpsXml(req: NfseRequest): string {
     <prest>
       <CNPJ>${req.emissor.cnpj}</CNPJ>
       <IM>${req.emissor.im}</IM>
-      <xNome>${escapeXml(req.emissor.razaoSocial)}</xNome>
       <regTrib>
         <opSimpNac>1</opSimpNac>
         <regEspTrib>0</regEspTrib>
