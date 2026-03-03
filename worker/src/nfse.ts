@@ -59,9 +59,11 @@ export interface NfseResult {
   success: boolean;
   chNFSe?: string;
   nNFSe?: string;
+  nDFSe?: string;
   nDPS?: string;
   chDPS?: string;
   xmlRetorno?: string;
+  pdfBase64?: string;
   error?: string;
   jaEmitida?: boolean;
   detalhes?: unknown;
@@ -490,22 +492,37 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
         } catch { /* ignore */ }
       }
 
-      // Extract nNFSe from XML if available
+      // Extract nNFSe and nDFSe from XML if available
       let nNFSe: string | undefined;
+      let nDFSe: string | undefined;
       const nNFSeMatch = nfseXml.match(/<nNFSe>(\d+)<\/nNFSe>/);
-      if (nNFSeMatch) {
-        nNFSe = nNFSeMatch[1];
-      } else if (parsed?.nNFSe) {
-        nNFSe = String(parsed.nNFSe);
+      if (nNFSeMatch) nNFSe = nNFSeMatch[1];
+      const nDFSeMatch = nfseXml.match(/<nDFSe>(\d+)<\/nDFSe>/);
+      if (nDFSeMatch) nDFSe = nDFSeMatch[1];
+      if (!nNFSe && parsed?.nNFSe) nNFSe = String(parsed.nNFSe);
+
+      // Try to fetch DANFSE PDF
+      let pdfBase64: string | undefined;
+      if (parsed?.chaveAcesso) {
+        try {
+          const danfse = await fetchDanfsePdf(parsed.chaveAcesso, req.ambiente);
+          if (danfse.success && danfse.pdfBase64) {
+            pdfBase64 = danfse.pdfBase64;
+          }
+        } catch (e) {
+          console.warn('⚠️ Falha ao buscar DANFSE PDF:', e);
+        }
       }
 
       return {
         success: true,
         chNFSe: parsed?.chaveAcesso,
         nNFSe,
+        nDFSe,
         nDPS: req.nDPS,
         chDPS: parsed?.idDps,
         xmlRetorno: nfseXml || response.body,
+        pdfBase64,
       };
     } else {
       // Erro - extrair mensagens

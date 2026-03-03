@@ -105,9 +105,9 @@ function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
       return (
         <div className="flex items-center gap-1">
           <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>
-          {row._nfseChave && (
-            <a href={`https://www.nfse.gov.br/EmissorNacional/Notas/Visualizar/Index/${row._nfseChave}`} target="_blank" rel="noopener noreferrer">
-              <Button variant="ghost" size="icon" className="h-6 w-6" title="Ver nota no portal NFS-e">
+          {row._nfsePdfUrl && (
+            <a href={row._nfsePdfUrl} download={`nfse-${row._nfseNumero || row.PROTOCOLOC}.pdf`}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e">
                 <FileDown className="h-3.5 w-3.5 text-primary" />
               </Button>
             </a>
@@ -319,11 +319,24 @@ export default function NotasFiscais() {
             const isAlreadyEmitted = !match.success && match.jaEmitida;
             const finalStatus = match.success ? "success" : (isAlreadyEmitted ? "already_emitted" : "error");
             
+            // Create PDF blob URL from base64
+            let pdfUrl: string | undefined;
+            if (match.pdfBase64) {
+              try {
+                const byteChars = atob(match.pdfBase64);
+                const byteNums = new Array(byteChars.length);
+                for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+                const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' });
+                pdfUrl = URL.createObjectURL(blob);
+              } catch { /* ignore */ }
+            }
+
             const state: NfseState = {
               status: finalStatus,
               chave: match.chNFSe,
-              numero: match.nNFSe || match.nDPS,
+              numero: match.nDFSe || match.nNFSe || match.nDPS,
               error: isAlreadyEmitted ? "Já emitida anteriormente" : match.error,
+              pdfUrl,
             };
             newStoreEntries.set(row.PROTOCOLOC, state);
             return {
@@ -332,6 +345,7 @@ export default function NotasFiscais() {
               _nfseChave: state.chave,
               _nfseNumero: state.numero,
               _nfseError: state.error,
+              _nfsePdfUrl: state.pdfUrl,
             };
           }
           return row;
@@ -351,7 +365,7 @@ export default function NotasFiscais() {
         const dbRows = successResults.map((r: any) => ({
           protocolo: r.protocolo,
           chave_acesso: r.chNFSe || null,
-          numero_nota: r.nNFSe || null,
+          numero_nota: r.nDFSe || r.nNFSe || null,
           ndps: r.nDPS || null,
           valor: r.dados?.valor || null,
           paciente_nome: r.dados?.pacienteNome || null,
