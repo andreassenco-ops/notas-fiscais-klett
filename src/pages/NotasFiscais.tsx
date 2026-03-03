@@ -1,7 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import jsPDF from "jspdf";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,13 +17,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
@@ -42,7 +34,7 @@ interface NotaFiscalRow {
   "VALOR TOTAL DO PAGAMENTO": number | null;
   [key: string]: unknown;
   // NFS-e state (client-side only)
-  _nfseStatus?: "pending" | "emitting" | "success" | "error";
+  _nfseStatus?: "pending" | "emitting" | "success" | "error" | "already_emitted";
   _nfseChave?: string;
   _nfseNumero?: string;
   _nfseError?: string;
@@ -113,14 +105,18 @@ function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
       return (
         <div className="flex items-center gap-1">
           <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>
-          {row._nfsePdfUrl && (
-            <a href={row._nfsePdfUrl} download={`nfse-${row._nfseChave || row.PROTOCOLOC}.pdf`}>
-              <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e">
+          {row._nfseChave && (
+            <a href={`https://www.nfse.gov.br/EmissorNacional/Notas/Visualizar/Index/${row._nfseChave}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="icon" className="h-6 w-6" title="Ver nota no portal NFS-e">
                 <FileDown className="h-3.5 w-3.5 text-primary" />
               </Button>
             </a>
           )}
         </div>
+      );
+    case "already_emitted":
+      return (
+        <Badge className="gap-1 bg-yellow-600 text-white"><AlertTriangle className="h-3 w-3" />Já emitida</Badge>
       );
     case "error":
       return (
@@ -135,7 +131,7 @@ function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
 
 // Persistent NFS-e status store (survives row refreshes)
 interface NfseState {
-  status: "pending" | "emitting" | "success" | "error";
+  status: "pending" | "emitting" | "success" | "error" | "already_emitted";
   chave?: string;
   numero?: string;
   error?: string;
@@ -149,7 +145,7 @@ export default function NotasFiscais() {
   const [hasQueried, setHasQueried] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [emittingLote, setEmittingLote] = useState(false);
-  const [ambiente, setAmbiente] = useState<"1" | "2">("2");
+  const [ambiente] = useState<"1">("1");
   const [nfseStore, setNfseStore] = useState<Map<string, NfseState>>(new Map());
   
   // Default to yesterday
@@ -285,23 +281,14 @@ export default function NotasFiscais() {
         prev.map((row) => {
           const match = result.results?.find((r: any) => r.protocolo === row.PROTOCOLOC);
           if (match) {
-            let pdfUrl: string | undefined;
-            if (match.success && match.chNFSe && match.dados) {
-              pdfUrl = generateNfsePdf({
-                chNFSe: match.chNFSe,
-                protocolo: match.protocolo,
-                pacienteNome: match.dados.pacienteNome,
-                cpf: match.dados.cpf,
-                valor: match.dados.valor,
-                formaPagamento: match.dados.formaPagamento,
-              });
-            }
+            const isAlreadyEmitted = !match.success && match.jaEmitida;
+            const finalStatus = match.success ? "success" : (isAlreadyEmitted ? "already_emitted" : "error");
+            
             const state: NfseState = {
-              status: match.success ? "success" : "error",
+              status: finalStatus,
               chave: match.chNFSe,
-              numero: match.nNFSe || match.chNFSe?.slice(-10),
-              error: match.error,
-              pdfUrl,
+              numero: match.nNFSe || match.nDPS,
+              error: isAlreadyEmitted ? "Já emitida anteriormente" : match.error,
             };
             newStoreEntries.set(row.PROTOCOLOC, state);
             return {
@@ -310,7 +297,6 @@ export default function NotasFiscais() {
               _nfseChave: state.chave,
               _nfseNumero: state.numero,
               _nfseError: state.error,
-              _nfsePdfUrl: state.pdfUrl,
             };
           }
           return row;
@@ -357,116 +343,7 @@ export default function NotasFiscais() {
     }
   };
 
-  const generateNfsePdf = useCallback((data: {
-    chNFSe: string;
-    protocolo: string;
-    pacienteNome: string;
-    cpf: string;
-    valor: number;
-    formaPagamento?: string;
-  }): string => {
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const w = 210;
-    const margin = 20;
-    let y = 25;
 
-    // Header
-    pdf.setFontSize(16);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("NFS-e - Nota Fiscal de Serviço Eletrônica", w / 2, y, { align: "center" });
-    y += 10;
-    pdf.setFontSize(10);
-    pdf.setFont("helvetica", "normal");
-    pdf.text("Sistema Nacional NFS-e", w / 2, y, { align: "center" });
-    y += 12;
-
-    // Linha separadora
-    pdf.setDrawColor(0);
-    pdf.setLineWidth(0.5);
-    pdf.line(margin, y, w - margin, y);
-    y += 10;
-
-    // Prestador
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("PRESTADOR DE SERVIÇO", margin, y);
-    y += 7;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(10);
-    pdf.text("LABORATORIO KLETT DE ANALISES CLINICAS TOXICOLOGI", margin, y); y += 5;
-    pdf.text("CNPJ: 16.842.718/0001-65 | IM: 153", margin, y); y += 5;
-    pdf.text("Mariana - MG", margin, y); y += 10;
-
-    // Separador
-    pdf.setDrawColor(180);
-    pdf.setLineWidth(0.3);
-    pdf.line(margin, y, w - margin, y);
-    y += 8;
-
-    // Tomador
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("TOMADOR DE SERVIÇO", margin, y);
-    y += 7;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(10);
-    pdf.text(`Nome: ${data.pacienteNome}`, margin, y); y += 5;
-    const cpfFmt = data.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-    pdf.text(`CPF: ${cpfFmt}`, margin, y); y += 10;
-
-    // Separador
-    pdf.line(margin, y, w - margin, y);
-    y += 8;
-
-    // Dados da nota
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("DADOS DA NOTA", margin, y);
-    y += 7;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(10);
-    pdf.text(`Chave de Acesso: ${data.chNFSe}`, margin, y); y += 5;
-    pdf.text(`Protocolo: ${data.protocolo}`, margin, y); y += 5;
-    pdf.text(`Data de Emissão: ${new Date().toLocaleDateString("pt-BR")}`, margin, y); y += 5;
-    if (data.formaPagamento) {
-      pdf.text(`Forma de Pagamento: ${data.formaPagamento}`, margin, y); y += 5;
-    }
-    y += 5;
-
-    // Separador
-    pdf.line(margin, y, w - margin, y);
-    y += 8;
-
-    // Serviço
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("SERVIÇO PRESTADO", margin, y);
-    y += 7;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(10);
-    pdf.text("Descrição: Serviços prestados - Análises clínicas", margin, y); y += 5;
-    pdf.text("Código Tributação Nacional: 04.02.01", margin, y); y += 10;
-
-    // Valor
-    pdf.setDrawColor(0);
-    pdf.setLineWidth(0.5);
-    pdf.line(margin, y, w - margin, y);
-    y += 8;
-    pdf.setFontSize(14);
-    pdf.setFont("helvetica", "bold");
-    const valorFmt = data.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    pdf.text(`VALOR TOTAL: ${valorFmt}`, margin, y);
-    y += 15;
-
-    // Rodapé
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "normal");
-    pdf.setTextColor(120);
-    pdf.text("Documento gerado pelo sistema KlettSender. Consulte a autenticidade em nfse.gov.br", w / 2, 280, { align: "center" });
-
-    const blob = pdf.output("blob");
-    return URL.createObjectURL(blob);
-  }, []);
 
   const exportCSV = () => {
     if (!filteredRows.length) return;
@@ -588,21 +465,7 @@ export default function NotasFiscais() {
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div className="flex items-center gap-3">
                   <Send className="h-5 w-5 text-primary" />
-                  <span className="font-medium">Emissão NFS-e Nacional</span>
-                  <Select value={ambiente} onValueChange={(v) => setAmbiente(v as "1" | "2")}>
-                    <SelectTrigger className="w-44">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2">
-                        <span className="flex items-center gap-2">
-                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
-                          Homologação
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="1">Produção</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <span className="font-medium">Emissão NFS-e Nacional — Produção</span>
                 </div>
                 <Button
                   onClick={emitirSelecionadas}
@@ -617,12 +480,6 @@ export default function NotasFiscais() {
                   Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
                 </Button>
               </div>
-              {ambiente === "2" && (
-                <p className="text-xs text-yellow-600 mt-2 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Ambiente de homologação — notas não têm validade fiscal
-                </p>
-              )}
             </CardContent>
           </Card>
         )}
@@ -682,7 +539,7 @@ export default function NotasFiscais() {
                           <Checkbox
                             checked={selectedRows.has(idx)}
                             onCheckedChange={() => toggleSelect(idx)}
-                            disabled={row._nfseStatus === "success"}
+                            disabled={row._nfseStatus === "success" || row._nfseStatus === "already_emitted"}
                           />
                         </TableCell>
                         <TableCell className="font-mono text-sm font-medium">
