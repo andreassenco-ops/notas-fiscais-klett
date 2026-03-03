@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import jsPDF from "jspdf";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ interface NotaFiscalRow {
   _nfseStatus?: "pending" | "emitting" | "success" | "error";
   _nfseChave?: string;
   _nfseError?: string;
+  _nfsePdfUrl?: string;
 }
 
 function buildQuery(): string {
@@ -94,7 +96,7 @@ const formatDate = (val: unknown) => {
 
 // ─── NFS-e Status Badge ───
 
-function NfseStatusBadge({ row, ambiente, onDownloadPdf }: { row: NotaFiscalRow; ambiente: string; onDownloadPdf: (chave: string) => void }) {
+function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
   if (!row._nfseStatus) return null;
   
   switch (row._nfseStatus) {
@@ -104,16 +106,12 @@ function NfseStatusBadge({ row, ambiente, onDownloadPdf }: { row: NotaFiscalRow;
       return (
         <div className="flex items-center gap-1">
           <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>
-          {row._nfseChave && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              title="Baixar PDF da NFS-e"
-              onClick={() => onDownloadPdf(row._nfseChave!)}
-            >
-              <FileDown className="h-3.5 w-3.5 text-primary" />
-            </Button>
+          {row._nfsePdfUrl && (
+            <a href={row._nfsePdfUrl} download={`nfse-${row._nfseChave || row.PROTOCOLOC}.pdf`}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" title="Baixar PDF da NFS-e">
+                <FileDown className="h-3.5 w-3.5 text-primary" />
+              </Button>
+            </a>
           )}
         </div>
       );
@@ -233,16 +231,28 @@ export default function NotasFiscais() {
 
       const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
 
-      // Update rows with results
+      // Update rows with results and generate PDFs for successful ones
       setRows((prev) =>
         prev.map((row) => {
           const match = result.results?.find((r: any) => r.protocolo === row.PROTOCOLOC);
           if (match) {
+            let pdfUrl: string | undefined;
+            if (match.success && match.chNFSe && match.dados) {
+              pdfUrl = generateNfsePdf({
+                chNFSe: match.chNFSe,
+                protocolo: match.protocolo,
+                pacienteNome: match.dados.pacienteNome,
+                cpf: match.dados.cpf,
+                valor: match.dados.valor,
+                formaPagamento: match.dados.formaPagamento,
+              });
+            }
             return {
               ...row,
               _nfseStatus: match.success ? ("success" as const) : ("error" as const),
               _nfseChave: match.chNFSe,
               _nfseError: match.error,
+              _nfsePdfUrl: pdfUrl,
             };
           }
           return row;
@@ -278,29 +288,116 @@ export default function NotasFiscais() {
     }
   };
 
-  const downloadDanfse = async (chave: string) => {
-    try {
-      toast.info("Buscando PDF da NFS-e...");
-      const result = await api.fetchDanfse(chave, Number(ambiente) as 1 | 2);
-      if (result.success && result.pdfBase64) {
-        const blob = new Blob(
-          [Uint8Array.from(atob(result.pdfBase64), (c) => c.charCodeAt(0))],
-          { type: "application/pdf" }
-        );
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `nfse-${chave}.pdf`;
-        link.click();
-        URL.revokeObjectURL(url);
-        toast.success("PDF baixado com sucesso!");
-      } else {
-        toast.error(result.error || "Erro ao buscar PDF");
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao buscar PDF");
+  const generateNfsePdf = useCallback((data: {
+    chNFSe: string;
+    protocolo: string;
+    pacienteNome: string;
+    cpf: string;
+    valor: number;
+    formaPagamento?: string;
+  }): string => {
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const w = 210;
+    const margin = 20;
+    let y = 25;
+
+    // Header
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("NFS-e - Nota Fiscal de Serviço Eletrônica", w / 2, y, { align: "center" });
+    y += 10;
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    pdf.text("Sistema Nacional NFS-e", w / 2, y, { align: "center" });
+    y += 12;
+
+    // Linha separadora
+    pdf.setDrawColor(0);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y, w - margin, y);
+    y += 10;
+
+    // Prestador
+    pdf.setFontSize(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PRESTADOR DE SERVIÇO", margin, y);
+    y += 7;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text("LABORATORIO KLETT DE ANALISES CLINICAS TOXICOLOGI", margin, y); y += 5;
+    pdf.text("CNPJ: 16.842.718/0001-65 | IM: 153", margin, y); y += 5;
+    pdf.text("Mariana - MG", margin, y); y += 10;
+
+    // Separador
+    pdf.setDrawColor(180);
+    pdf.setLineWidth(0.3);
+    pdf.line(margin, y, w - margin, y);
+    y += 8;
+
+    // Tomador
+    pdf.setFontSize(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("TOMADOR DE SERVIÇO", margin, y);
+    y += 7;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text(`Nome: ${data.pacienteNome}`, margin, y); y += 5;
+    const cpfFmt = data.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    pdf.text(`CPF: ${cpfFmt}`, margin, y); y += 10;
+
+    // Separador
+    pdf.line(margin, y, w - margin, y);
+    y += 8;
+
+    // Dados da nota
+    pdf.setFontSize(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("DADOS DA NOTA", margin, y);
+    y += 7;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text(`Chave de Acesso: ${data.chNFSe}`, margin, y); y += 5;
+    pdf.text(`Protocolo: ${data.protocolo}`, margin, y); y += 5;
+    pdf.text(`Data de Emissão: ${new Date().toLocaleDateString("pt-BR")}`, margin, y); y += 5;
+    if (data.formaPagamento) {
+      pdf.text(`Forma de Pagamento: ${data.formaPagamento}`, margin, y); y += 5;
     }
-  };
+    y += 5;
+
+    // Separador
+    pdf.line(margin, y, w - margin, y);
+    y += 8;
+
+    // Serviço
+    pdf.setFontSize(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("SERVIÇO PRESTADO", margin, y);
+    y += 7;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text("Descrição: Serviços prestados - Análises clínicas", margin, y); y += 5;
+    pdf.text("Código Tributação Nacional: 04.02.01", margin, y); y += 10;
+
+    // Valor
+    pdf.setDrawColor(0);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y, w - margin, y);
+    y += 8;
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    const valorFmt = data.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    pdf.text(`VALOR TOTAL: ${valorFmt}`, margin, y);
+    y += 15;
+
+    // Rodapé
+    pdf.setFontSize(8);
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(120);
+    pdf.text("Documento gerado pelo sistema KlettSender. Consulte a autenticidade em nfse.gov.br", w / 2, 280, { align: "center" });
+
+    const blob = pdf.output("blob");
+    return URL.createObjectURL(blob);
+  }, []);
 
   const exportCSV = () => {
     if (!filteredRows.length) return;
@@ -521,7 +618,7 @@ export default function NotasFiscais() {
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
                         </TableCell>
                         <TableCell>
-                          <NfseStatusBadge row={row} ambiente={ambiente} onDownloadPdf={downloadDanfse} />
+                          <NfseStatusBadge row={row} />
                         </TableCell>
                       </TableRow>
                     ))}

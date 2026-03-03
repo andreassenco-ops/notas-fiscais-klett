@@ -220,7 +220,7 @@ export const api = {
     valor: number;
     formaPagamento?: string;
   }>, ambiente?: 1 | 2) => workerFetch<{
-    results: Array<{ protocolo: string; success: boolean; chNFSe?: string; error?: string }>;
+    results: Array<{ protocolo: string; success: boolean; chNFSe?: string; xmlRetorno?: string; error?: string; dados?: { pacienteNome: string; cpf: string; valor: number; formaPagamento?: string } }>;
     total: number;
     emitidas: number;
     erros: number;
