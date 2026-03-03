@@ -243,7 +243,7 @@ function buildDpsXml(req: NfseRequest): string {
       <IM>${req.emissor.im}</IM>
       <xNome>${escapeXml(req.emissor.razaoSocial)}</xNome>
       <regTrib>
-        <opSimpNac>2</opSimpNac>
+        <opSimpNac>1</opSimpNac>
         <regEspTrib>0</regEspTrib>
       </regTrib>
     </prest>
@@ -286,6 +286,18 @@ function buildDpsXml(req: NfseRequest): string {
             <tpRetPisCofins>0</tpRetPisCofins>
           </piscofins>
         </tribFed>
+        <totTrib>
+          <pTotTrib>
+            <pTotTribFed>${formatDecimal(pTotTribFed)}</pTotTribFed>
+            <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
+            <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
+          </pTotTrib>
+          <vTotTrib>
+            <vTotTribFed>${formatDecimal(vTotTribFed)}</vTotTribFed>
+            <vTotTribEst>${formatDecimal(vTotTribEst)}</vTotTribEst>
+            <vTotTribMun>${formatDecimal(vTotTribMun)}</vTotTribMun>
+          </vTotTrib>
+        </totTrib>
       </trib>
     </valores>
   </infDPS>
