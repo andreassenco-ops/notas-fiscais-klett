@@ -189,10 +189,45 @@ export default function NotasFiscais() {
         return;
       }
 
-      if (result.rows) setRows(applyNfseState(result.rows, nfseStore));
+      const rawRows: NotaFiscalRow[] = result.rows || [];
+      
+      // Fetch already-emitted notes from database
+      if (rawRows.length > 0) {
+        const protocolos = rawRows.map(r => r.PROTOCOLOC);
+        const { data: emitidas } = await supabase
+          .from('nfse_emitidas')
+          .select('protocolo, chave_acesso, numero_nota, ndps')
+          .in('protocolo', protocolos);
+        
+        if (emitidas && emitidas.length > 0) {
+          const dbStore = new Map<string, NfseState>();
+          for (const e of emitidas) {
+            dbStore.set(e.protocolo, {
+              status: "success",
+              chave: e.chave_acesso || undefined,
+              numero: e.numero_nota || e.ndps || undefined,
+            });
+          }
+          // Merge db data into nfseStore
+          setNfseStore((prev) => {
+            const next = new Map(prev);
+            dbStore.forEach((v, k) => next.set(k, v));
+            return next;
+          });
+          // Apply combined state
+          const combinedStore = new Map(nfseStore);
+          dbStore.forEach((v, k) => combinedStore.set(k, v));
+          setRows(applyNfseState(rawRows, combinedStore));
+        } else {
+          setRows(applyNfseState(rawRows, nfseStore));
+        }
+      } else {
+        setRows([]);
+      }
+
       setHasQueried(true);
       setSelectedRows(new Set());
-      toast.success(`${result.rows?.length || 0} protocolos encontrados`);
+      toast.success(`${rawRows.length} protocolos encontrados`);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Erro ao consultar"
@@ -309,6 +344,21 @@ export default function NotasFiscais() {
         newStoreEntries.forEach((v, k) => next.set(k, v));
         return next;
       });
+
+      // Save successful emissions to database
+      const successResults = result.results?.filter((r: any) => r.success);
+      if (successResults?.length > 0) {
+        const dbRows = successResults.map((r: any) => ({
+          protocolo: r.protocolo,
+          chave_acesso: r.chNFSe || null,
+          numero_nota: r.nNFSe || null,
+          ndps: r.nDPS || null,
+          valor: r.dados?.valor || null,
+          paciente_nome: r.dados?.pacienteNome || null,
+          cpf: r.dados?.cpf || null,
+        }));
+        await supabase.from('nfse_emitidas').upsert(dbRows, { onConflict: 'protocolo' });
+      }
 
       if (result.emitidas > 0) {
         toast.success(`${result.emitidas} NFS-e(s) emitida(s) com sucesso!`);
