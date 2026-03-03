@@ -364,8 +364,9 @@ function makeRequest(
   body: string,
   cert: CertData,
   contentType = 'application/json',
-  redirectCount = 0
-): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  redirectCount = 0,
+  acceptBinary = false
+): Promise<{ statusCode: number; body: string; rawBody?: Buffer; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
 
@@ -376,8 +377,8 @@ function makeRequest(
       method,
       headers: {
         'Content-Type': contentType,
-        'Accept': 'application/json',
-        'Content-Length': Buffer.byteLength(body, 'utf-8'),
+        'Accept': acceptBinary ? 'application/pdf' : 'application/json',
+        ...(body ? { 'Content-Length': Buffer.byteLength(body, 'utf-8') } : {}),
       },
       // mTLS - usar sempre PFX para preservar cadeia completa do certificado cliente
       pfx: cert.pfx,
@@ -386,10 +387,11 @@ function makeRequest(
     };
 
     const req = https.request(options, async (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', async () => {
         const statusCode = res.statusCode || 500;
+        const rawBody = Buffer.concat(chunks);
 
         // Segue redirects (301/302/307/308)
         if ([301, 302, 307, 308].includes(statusCode)) {
@@ -398,7 +400,7 @@ function makeRequest(
             const nextUrl = new URL(location, urlObj).toString();
             console.warn(`↪️ Redirect ${statusCode}: ${url} -> ${nextUrl}`);
             try {
-              const redirected = await makeRequest(nextUrl, method, body, cert, contentType, redirectCount + 1);
+              const redirected = await makeRequest(nextUrl, method, body, cert, contentType, redirectCount + 1, acceptBinary);
               resolve(redirected);
               return;
             } catch (err) {
@@ -408,7 +410,12 @@ function makeRequest(
           }
         }
 
-        resolve({ statusCode, body: data, headers: res.headers as Record<string, string | string[] | undefined> });
+        resolve({
+          statusCode,
+          body: rawBody.toString('utf-8'),
+          rawBody: acceptBinary ? rawBody : undefined,
+          headers: res.headers as Record<string, string | string[] | undefined>,
+        });
       });
     });
 
@@ -655,12 +662,12 @@ export async function fetchDanfsePdf(chaveAcesso: string, ambiente: 1 | 2 = 1): 
     const apiUrl = `${API_URLS[ambiente]}/danfse/${chaveAcesso}`;
     console.log(`📄 Buscando DANFSE PDF: GET ${apiUrl}`);
 
-    const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/pdf');
+    const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/pdf', 0, true);
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      // Response body is the PDF binary - convert to base64
-      const pdfBase64 = Buffer.from(response.body, 'binary').toString('base64');
-      console.log(`✅ DANFSE PDF recebido (${pdfBase64.length} chars base64)`);
+    if (response.statusCode >= 200 && response.statusCode < 300 && response.rawBody) {
+      // rawBody is already a proper Buffer - convert to base64
+      const pdfBase64 = response.rawBody.toString('base64');
+      console.log(`✅ DANFSE PDF recebido (${pdfBase64.length} chars base64, ${response.rawBody.length} bytes raw)`);
       return { success: true, pdfBase64 };
     } else {
       console.error(`❌ Erro ao buscar DANFSE: HTTP ${response.statusCode}`);
