@@ -505,7 +505,7 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       let pdfBase64: string | undefined;
       if (parsed?.chaveAcesso) {
         try {
-          const danfse = await fetchDanfsePdf(parsed.chaveAcesso, req.ambiente);
+          const danfse = await fetchDanfsePdf(parsed.chaveAcesso, request.ambiente);
           if (danfse.success && danfse.pdfBase64) {
             pdfBase64 = danfse.pdfBase64;
           }
@@ -519,7 +519,7 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
         chNFSe: parsed?.chaveAcesso,
         nNFSe,
         nDFSe,
-        nDPS: req.nDPS,
+        nDPS: request.nDPS,
         chDPS: parsed?.idDps,
         xmlRetorno: nfseXml || response.body,
         pdfBase64,
@@ -556,7 +556,7 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       return {
         success: false,
         error: errorMessage,
-        nDPS: req.nDPS,
+        nDPS: request.nDPS,
         jaEmitida,
         detalhes: {
           httpStatus: response.statusCode,
