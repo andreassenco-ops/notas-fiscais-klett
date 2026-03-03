@@ -238,7 +238,14 @@ export default function NotasFiscais() {
         toast.success(`${result.emitidas} NFS-e(s) emitida(s) com sucesso!`);
       }
       if (result.erros > 0) {
-        toast.error(`${result.erros} erro(s) na emissão`);
+        const errorDetails = result.results
+          ?.filter((r: any) => !r.success)
+          ?.map((r: any) => `${r.protocolo}: ${r.error}`)
+          ?.join('\n') || '';
+        toast.error(`${result.erros} erro(s) na emissão`, {
+          description: errorDetails.substring(0, 300),
+          duration: 10000,
+        });
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao emitir lote");
