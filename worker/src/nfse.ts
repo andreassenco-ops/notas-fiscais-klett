@@ -604,6 +604,31 @@ export async function emitirNFSeFromProtocolo(params: {
   });
 }
 
+// ─── DANFSE (PDF da NFS-e) ───
+
+export async function fetchDanfsePdf(chaveAcesso: string, ambiente: 1 | 2 = 1): Promise<{ success: boolean; pdfBase64?: string; error?: string }> {
+  try {
+    const cert = loadCertificate();
+    const apiUrl = `${API_URLS[ambiente]}/danfse/${chaveAcesso}`;
+    console.log(`📄 Buscando DANFSE PDF: GET ${apiUrl}`);
+
+    const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/pdf');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      // Response body is the PDF binary - convert to base64
+      const pdfBase64 = Buffer.from(response.body, 'binary').toString('base64');
+      console.log(`✅ DANFSE PDF recebido (${pdfBase64.length} chars base64)`);
+      return { success: true, pdfBase64 };
+    } else {
+      console.error(`❌ Erro ao buscar DANFSE: HTTP ${response.statusCode}`);
+      return { success: false, error: `HTTP ${response.statusCode} - ${response.body.substring(0, 200)}` };
+    }
+  } catch (error) {
+    console.error('❌ Erro ao buscar DANFSE:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
 // ─── Health Check ───
 
 export function isNfseConfigured(): boolean {

@@ -228,4 +228,9 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ items, ambiente }),
   }),
+  fetchDanfse: (chave: string, ambiente: 1 | 2 = 1) => workerFetch<{
+    success: boolean;
+    pdfBase64?: string;
+    error?: string;
+  }>(`/api/nfse/danfse?chave=${encodeURIComponent(chave)}&ambiente=${ambiente}`),
 };
