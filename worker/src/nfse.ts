@@ -74,7 +74,7 @@ export const KLETT_EMISSOR: NfseEmissor = {
 const KLETT_SERVICO_PADRAO: NfseServico = {
   cTribNac: '040201',        // 04.02.01
   xDescServ: 'Análises Clínicas',
-  cNBS: '1.2301.93.00',
+  cNBS: '12301.9300',
   cLocPrestacao: '3140001',  // Mariana
 };
 
