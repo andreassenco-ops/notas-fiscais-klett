@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, FileText, Download } from "lucide-react";
-import { api } from "@/lib/api-client";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface NotaFiscalRow {
@@ -100,16 +100,16 @@ export default function NotasFiscais() {
   const runQuery = async () => {
     setLoading(true);
     try {
-      const result = await api.testSqlQuery(buildQuery(), 1000) as {
-        columns?: string[];
-        rows?: NotaFiscalRow[];
-        rowCount?: number;
-        totalCount?: number;
-        success?: boolean;
-        error?: string;
-      };
+      const { data: result, error } = await supabase.functions.invoke('test-sql-query', {
+        body: { sql_query: buildQuery(), limit: 1000 },
+      });
 
-      if (result.error) {
+      if (error) {
+        toast.error(error.message || "Erro ao consultar");
+        return;
+      }
+
+      if (result?.error) {
         toast.error(result.error);
         return;
       }
