@@ -660,20 +660,79 @@ export async function fetchDanfsePdf(chaveAcesso: string, _ambiente: 1 | 2 = 1):
   try {
     const cert = loadCertificate();
     // URL correta do DANFSE - migrou de sefin.nfse.gov.br para adn.nfse.gov.br em set/2025
+    // adn.nfse.gov.br exige certificado do cliente (496 SSL Certificate Required)
     const apiUrl = `https://adn.nfse.gov.br/danfse/${chaveAcesso}`;
     console.log(`📄 Buscando DANFSE PDF: GET ${apiUrl}`);
 
-    const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/pdf', 0, true);
+    const urlObj = new URL(apiUrl);
 
-    if (response.statusCode >= 200 && response.statusCode < 300 && response.rawBody) {
-      // rawBody is already a proper Buffer - convert to base64
-      const pdfBase64 = response.rawBody.toString('base64');
-      console.log(`✅ DANFSE PDF recebido (${pdfBase64.length} chars base64, ${response.rawBody.length} bytes raw)`);
-      return { success: true, pdfBase64 };
-    } else {
-      console.error(`❌ Erro ao buscar DANFSE: HTTP ${response.statusCode}`);
-      return { success: false, error: `HTTP ${response.statusCode} - ${response.body.substring(0, 200)}` };
-    }
+    return new Promise((resolve) => {
+      const options: https.RequestOptions = {
+        hostname: urlObj.hostname,
+        port: 443,
+        path: urlObj.pathname,
+        method: 'GET',
+        headers: {
+          'Accept': 'application/pdf, */*',
+        },
+        pfx: cert.pfx,
+        passphrase: cert.passphrase,
+        rejectUnauthorized: true,
+      };
+
+      const req = https.request(options, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const statusCode = res.statusCode || 500;
+          const rawBody = Buffer.concat(chunks);
+
+          // Follow redirects
+          if ([301, 302, 307, 308].includes(statusCode) && res.headers.location) {
+            console.log(`↪️ DANFSE redirect ${statusCode}: ${res.headers.location}`);
+            // For redirects, retry with the new URL using makeRequest
+            const redirectUrl = new URL(res.headers.location, urlObj).toString();
+            makeRequest(redirectUrl, 'GET', '', cert, 'application/pdf', 0, true)
+              .then((redirectRes) => {
+                if (redirectRes.statusCode >= 200 && redirectRes.statusCode < 300 && redirectRes.rawBody) {
+                  const pdfBase64 = redirectRes.rawBody.toString('base64');
+                  console.log(`✅ DANFSE PDF recebido via redirect (${pdfBase64.length} chars base64)`);
+                  resolve({ success: true, pdfBase64 });
+                } else {
+                  resolve({ success: false, error: `HTTP ${redirectRes.statusCode} após redirect` });
+                }
+              })
+              .catch((err) => resolve({ success: false, error: err.message }));
+            return;
+          }
+
+          if (statusCode >= 200 && statusCode < 300 && rawBody.length > 0) {
+            const contentType = res.headers['content-type'] || '';
+            // Check if response is actually a PDF
+            if (contentType.includes('pdf') || rawBody[0] === 0x25 /* % = PDF magic byte */) {
+              const pdfBase64 = rawBody.toString('base64');
+              console.log(`✅ DANFSE PDF recebido (${pdfBase64.length} chars base64, ${rawBody.length} bytes raw)`);
+              resolve({ success: true, pdfBase64 });
+            } else {
+              // Might be an error page in HTML
+              console.error(`❌ DANFSE resposta não é PDF: ${contentType} (${rawBody.length} bytes)`);
+              resolve({ success: false, error: `Resposta não é PDF (${contentType})` });
+            }
+          } else {
+            const bodyStr = rawBody.toString('utf-8').substring(0, 300);
+            console.error(`❌ Erro ao buscar DANFSE: HTTP ${statusCode} - ${bodyStr}`);
+            resolve({ success: false, error: `HTTP ${statusCode} - ${bodyStr}` });
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('❌ Erro de conexão ao buscar DANFSE:', err.message);
+        resolve({ success: false, error: `Erro de conexão: ${err.message}` });
+      });
+
+      req.end();
+    });
   } catch (error) {
     console.error('❌ Erro ao buscar DANFSE:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
