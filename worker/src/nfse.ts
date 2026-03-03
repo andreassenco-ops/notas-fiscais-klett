@@ -72,9 +72,8 @@ export const KLETT_EMISSOR: NfseEmissor = {
 };
 
 const KLETT_SERVICO_PADRAO: NfseServico = {
-  cTribNac: '040201',        // 04.02.01
+  cTribNac: '040201',        // 04.02.01 - Análises clínicas e congêneres
   xDescServ: 'Análises Clínicas',
-  cNBS: '12301.9300',
   cLocPrestacao: '3140001',  // Mariana
 };
 
@@ -232,8 +231,8 @@ function buildDpsXml(req: NfseRequest): string {
       </locPrest>
       <cServ>
         <cTribNac>${req.servico.cTribNac}</cTribNac>
-        <xDescServ>${escapeXml(req.servico.xDescServ)}</xDescServ>
-        <cNBS>${req.servico.cNBS || ''}</cNBS>
+        <xDescServ>${escapeXml(req.servico.xDescServ)}</xDescServ>${req.servico.cNBS ? `
+        <cNBS>${req.servico.cNBS}</cNBS>` : ''}
       </cServ>
     </serv>
     <valores>
