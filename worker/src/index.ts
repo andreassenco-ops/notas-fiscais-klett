@@ -1,6 +1,6 @@
 /**
  * Klett Whats Sender - Worker Principal
- * v4.0: API + Sync only (sem Baileys/WhatsApp)
+ * v4.1: API + Sync + test-query route
  * O bot.js cuida dos envios via Playwright + WhatsApp Web
  *
  * Este worker é responsável por:
