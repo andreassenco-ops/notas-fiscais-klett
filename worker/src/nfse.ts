@@ -270,13 +270,15 @@ function buildDpsXml(req: NfseRequest): string {
           <tpRetISSQN>1</tpRetISSQN>
         </tribMun>
         <tribFed>
-          <CST>01</CST>
-          <vBCPisCofins>${formatDecimal(vServ)}</vBCPisCofins>
-          <pAliqPis>${formatDecimal(aliqPIS)}</pAliqPis>
-          <pAliqCofins>${formatDecimal(aliqCOFINS)}</pAliqCofins>
-          <vPis>${formatDecimal(vPIS)}</vPis>
-          <vCofins>${formatDecimal(vCOFINS)}</vCofins>
-          <tpRetPisCofins>1</tpRetPisCofins>
+          <piscofins>
+            <CST>01</CST>
+            <vBCPisCofins>${formatDecimal(vServ)}</vBCPisCofins>
+            <pAliqPis>${formatDecimal(aliqPIS)}</pAliqPis>
+            <pAliqCofins>${formatDecimal(aliqCOFINS)}</pAliqCofins>
+            <vPis>${formatDecimal(vPIS)}</vPis>
+            <vCofins>${formatDecimal(vCOFINS)}</vCofins>
+            <tpRetPisCofins>1</tpRetPisCofins>
+          </piscofins>
         </tribFed>
         <totTrib>
           <indTotTrib>1</indTotTrib>
