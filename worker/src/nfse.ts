@@ -287,7 +287,8 @@ function makeRequest(
   url: string,
   method: string,
   body: string,
-  cert: CertData
+  cert: CertData,
+  contentType = 'application/xml; charset=utf-8'
 ): Promise<{ statusCode: number; body: string }> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
@@ -298,7 +299,8 @@ function makeRequest(
       path: urlObj.pathname,
       method,
       headers: {
-        'Content-Type': 'application/xml',
+        'Content-Type': contentType,
+        'Accept': 'application/xml, text/xml, */*',
         'Content-Length': Buffer.byteLength(body, 'utf-8'),
       },
       // mTLS - certificado A1
@@ -352,7 +354,24 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
     const apiUrl = `${API_URLS[request.ambiente]}/nfse`;
     console.log(`📤 Enviando para ${apiUrl}...`);
 
-    const response = await makeRequest(apiUrl, 'POST', signedXml, cert);
+    let response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'application/xml; charset=utf-8');
+
+    // Alguns ambientes exigem content-type/endpoint específicos; tenta fallback em HTTP 415
+    if (response.statusCode === 415) {
+      console.warn('⚠️ HTTP 415 com application/xml; tentando text/xml...');
+      response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'text/xml; charset=utf-8');
+    }
+
+    if (response.statusCode === 415) {
+      const altApiUrl = `${API_URLS[request.ambiente]}/dps`;
+      console.warn(`⚠️ HTTP 415 persistente; tentando endpoint alternativo ${altApiUrl}...`);
+      response = await makeRequest(altApiUrl, 'POST', signedXml, cert, 'application/xml; charset=utf-8');
+
+      if (response.statusCode === 415) {
+        response = await makeRequest(altApiUrl, 'POST', signedXml, cert, 'text/xml; charset=utf-8');
+      }
+    }
+
     console.log(`📥 Resposta: HTTP ${response.statusCode} (${response.body.length} bytes)`);
 
     // 5. Processar resposta
