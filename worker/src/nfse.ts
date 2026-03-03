@@ -101,32 +101,52 @@ function loadCertificate(): CertData {
 
   const pfxBuffer = Buffer.from(pfxBase64, 'base64');
 
-  // Testa se o PFX é válido criando um secure context
-  // Usa openssl legacy provider para suportar certificados com algoritmos antigos
+  // Extrair PEM key e cert do PFX usando OpenSSL via Node crypto
+  let pemKey = '';
+  let pemCert = '';
+
   try {
-    tls.createSecureContext({
-      pfx: pfxBuffer,
-      passphrase: password,
-    });
-  } catch (err: any) {
-    // Se falhar com formato não suportado, tenta com flag legacy
-    if (err.message?.includes('Unsupported') || err.message?.includes('PKCS12')) {
-      console.warn('⚠️ PFX com formato legado detectado. Tentando conversão...');
-      // Node 17+ com OpenSSL 3.x precisa do legacy provider
-      // Alternativa: converter via spawn openssl, ou indicar ao usuário
-      throw new Error(
-        'Certificado PFX usa algoritmo não suportado pelo OpenSSL 3.x. ' +
-        'Converta o certificado com: openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && ' +
-        'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx -passout pass:SUASENHA. ' +
-        'Ou inicie o Railway com NODE_OPTIONS=--openssl-legacy-provider'
-      );
+    // Node 21.7+ tem crypto.X509Certificate e PKCS12 parsing,
+    // mas para compatibilidade usamos tls.createSecureContext para validar
+    // e child_process openssl para extrair PEM
+    tls.createSecureContext({ pfx: pfxBuffer, passphrase: password });
+
+    // Extrair key e cert via openssl CLI (disponível no container)
+    const { execSync } = require('child_process');
+    const tmpPfx = '/tmp/nfse_cert.pfx';
+    require('fs').writeFileSync(tmpPfx, pfxBuffer);
+
+    try {
+      // Extrair chave privada
+      pemKey = execSync(
+        `openssl pkcs12 -in ${tmpPfx} -nocerts -nodes -passin pass:${password} 2>/dev/null || ` +
+        `openssl pkcs12 -in ${tmpPfx} -nocerts -nodes -passin pass:${password} -legacy 2>/dev/null`,
+        { encoding: 'utf-8' }
+      ).trim();
+
+      // Extrair certificado
+      pemCert = execSync(
+        `openssl pkcs12 -in ${tmpPfx} -clcerts -nokeys -passin pass:${password} 2>/dev/null || ` +
+        `openssl pkcs12 -in ${tmpPfx} -clcerts -nokeys -passin pass:${password} -legacy 2>/dev/null`,
+        { encoding: 'utf-8' }
+      ).trim();
+    } finally {
+      try { require('fs').unlinkSync(tmpPfx); } catch { /* ignore */ }
     }
-    throw err;
+
+    if (!pemKey || !pemCert) {
+      throw new Error('Não foi possível extrair key/cert do PFX via openssl');
+    }
+
+    console.log('🔐 Certificado A1: PEM key e cert extraídos com sucesso');
+  } catch (err: any) {
+    console.warn('⚠️ Falha ao extrair PEM do PFX:', err.message);
+    console.warn('⚠️ Usando PFX direto (requer NODE_OPTIONS=--openssl-legacy-provider)');
   }
 
   cachedCert = {
-    key: '',
-    cert: '',
+    key: pemKey,
+    cert: pemCert,
     pfx: pfxBuffer,
     passphrase: password,
   };
@@ -238,19 +258,25 @@ function buildDpsXml(req: NfseRequest): string {
 // ─── Assinatura Digital XML ───
 
 async function signXml(xml: string): Promise<string> {
+  const cert = loadCertificate();
+
+  if (!cert.key || !cert.cert) {
+    throw new Error(
+      'Chave PEM não disponível para assinatura. ' +
+      'Configure NODE_OPTIONS=--openssl-legacy-provider no Railway ou reconverta o PFX.'
+    );
+  }
+
   try {
-    // Dynamic import for xml-crypto
     const { SignedXml } = await import('xml-crypto');
-    const cert = loadCertificate();
 
     const sig = new SignedXml({
-      privateKey: cert.pfx,
-      publicCert: cert.pfx,
+      privateKey: cert.key,
+      publicCert: cert.cert,
       signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
       canonicalizationAlgorithm: 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
     });
 
-    // Add reference to infDPS
     const idMatch = xml.match(/Id="(DPS[^"]+)"/);
     const refUri = idMatch ? `#${idMatch[1]}` : '';
 
@@ -270,8 +296,6 @@ async function signXml(xml: string): Promise<string> {
 
     return sig.getSignedXml();
   } catch (error) {
-    // Fallback: if xml-crypto not available or pfx parsing fails,
-    // try without signature (for testing/homologação)
     console.error('⚠️ Erro ao assinar XML:', error);
     throw new Error(`Falha na assinatura digital: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
   }
@@ -305,9 +329,10 @@ function makeRequest(
         'Accept': 'application/json',
         'Content-Length': Buffer.byteLength(body, 'utf-8'),
       },
-      // mTLS - certificado A1
-      pfx: cert.pfx,
-      passphrase: cert.passphrase,
+      // mTLS - preferir PEM key+cert quando disponível, fallback para PFX
+      ...(cert.key && cert.cert
+        ? { key: cert.key, cert: cert.cert }
+        : { pfx: cert.pfx, passphrase: cert.passphrase }),
       rejectUnauthorized: true,
     };
 
