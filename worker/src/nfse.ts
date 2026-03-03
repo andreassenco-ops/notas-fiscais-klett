@@ -181,11 +181,7 @@ function buildDpsXml(req: NfseRequest): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   const dhEmi = `${brasiliaTime.getFullYear()}-${pad(brasiliaTime.getMonth() + 1)}-${pad(brasiliaTime.getDate())}T${pad(brasiliaTime.getHours())}:${pad(brasiliaTime.getMinutes())}:${pad(brasiliaTime.getSeconds())}-03:00`;
   
-  // Calcular ISS
   const vServ = req.valores.vServ;
-  const aliqISS = req.valores.aliqISS || 3.00;
-  const vISS = vServ * (aliqISS / 100);
-  const vLiq = vServ - vISS;
   
   // Tomador - CPF ou CNPJ
   let tomadorDoc = '';
@@ -202,22 +198,35 @@ function buildDpsXml(req: NfseRequest): string {
     ? `<fone>${req.tomador.fone.replace(/\D/g, '')}</fone>` 
     : '';
 
-  // Código IBGE da inscrição (tipo 2 = CNPJ)
+  // ID da DPS: cMunIBGE(7) + tipoInsc(1=CPF,2=CNPJ) + inscFederal(14) + serie(5) + nDPS(15)
   const idDPS = `${req.emissor.cMunIBGE}2${req.emissor.cnpj}${serie.padStart(5, '0')}${req.nDPS.padStart(15, '0')}`;
 
-  // Informações complementares
-  const infCompl = [];
-  if (req.protocolo) infCompl.push(`PROTOCOLO: ${req.protocolo}`);
-  if (req.formaPagamento) infCompl.push(`FORMA DE PAGAMENTO: ${req.formaPagamento}`);
-  if (req.dataAtendimento) infCompl.push(`DATA DO ATENDIMENTO: ${req.dataAtendimento}`);
-  const xInfComp = infCompl.length > 0 ? infCompl.join(', ') : '';
+  // Informações complementares (filho de serv, não de infDPS!)
+  const infComplParts = [];
+  if (req.protocolo) infComplParts.push(`PROTOCOLO: ${req.protocolo}`);
+  if (req.formaPagamento) infComplParts.push(`FORMA DE PAGAMENTO: ${req.formaPagamento}`);
+  if (req.dataAtendimento) infComplParts.push(`DATA DO ATENDIMENTO: ${req.dataAtendimento}`);
+  const xInfComp = infComplParts.length > 0 ? infComplParts.join(', ') : '';
 
-  // Tributação federal (PIS/COFINS)
+  // Tributação federal (PIS/COFINS) - conforme screenshot do portal
   const aliqPIS = 0.65;
   const aliqCOFINS = 3.00;
   const vPIS = vServ * (aliqPIS / 100);
   const vCOFINS = vServ * (aliqCOFINS / 100);
 
+  // Tributos aproximados (valores monetários) - Lei 12.741/2012
+  const pTotTribFed = 3.65;  // PIS + COFINS + outros
+  const pTotTribEst = 0;
+  const pTotTribMun = 3.00;  // ISS
+  const vTotTribFed = vServ * (pTotTribFed / 100);
+  const vTotTribEst = 0;
+  const vTotTribMun = vServ * (pTotTribMun / 100);
+
+  // ── Montar XML conforme schema DPS v1.01 ──
+  // Ordem dos filhos de infDPS:
+  //   tpAmb, dhEmi, verAplic, serie, nDPS, dCompet, tpEmit, cLocEmi,
+  //   [subst], prest, [toma], [interm], serv, valores, [IBSCBS]
+  
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.00">
   <infDPS Id="DPS${idDPS}">
@@ -229,7 +238,6 @@ function buildDpsXml(req: NfseRequest): string {
     <dCompet>${req.dCompet}</dCompet>
     <tpEmit>1</tpEmit>
     <cLocEmi>${req.emissor.cMunIBGE}</cLocEmi>
-    
     <prest>
       <CNPJ>${req.emissor.cnpj}</CNPJ>
       <IM>${req.emissor.im}</IM>
@@ -253,7 +261,10 @@ function buildDpsXml(req: NfseRequest): string {
         <cTribNac>${req.servico.cTribNac}</cTribNac>
         <xDescServ>${escapeXml(req.servico.xDescServ)}</xDescServ>${req.servico.cNBS ? `
         <cNBS>${req.servico.cNBS}</cNBS>` : ''}
-      </cServ>
+      </cServ>${xInfComp ? `
+      <infoCompl>
+        <xInfComp>${escapeXml(xInfComp)}</xInfComp>
+      </infoCompl>` : ''}
     </serv>
     <valores>
       <vServPrest>
@@ -269,13 +280,23 @@ function buildDpsXml(req: NfseRequest): string {
             <CST>01</CST>
             <vBCPisCofins>${formatDecimal(vServ)}</vBCPisCofins>
             <pAliqPis>${formatDecimal(aliqPIS)}</pAliqPis>
+            <pAliqCofins>${formatDecimal(aliqCOFINS)}</pAliqCofins>
             <vPis>${formatDecimal(vPIS)}</vPis>
             <vCofins>${formatDecimal(vCOFINS)}</vCofins>
-            <tpRetPisCofins>1</tpRetPisCofins>
+            <tpRetPisCofins>0</tpRetPisCofins>
           </piscofins>
         </tribFed>
         <totTrib>
-          <indTotTrib>0</indTotTrib>
+          <vTotTrib>
+            <vTotTribFed>${formatDecimal(vTotTribFed)}</vTotTribFed>
+            <vTotTribEst>${formatDecimal(vTotTribEst)}</vTotTribEst>
+            <vTotTribMun>${formatDecimal(vTotTribMun)}</vTotTribMun>
+          </vTotTrib>
+          <pTotTrib>
+            <pTotTribFed>${formatDecimal(pTotTribFed)}</pTotTribFed>
+            <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
+            <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
+          </pTotTrib>
         </totTrib>
       </trib>
     </valores>
