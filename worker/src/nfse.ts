@@ -656,10 +656,11 @@ export async function emitirNFSeFromProtocolo(params: {
 
 // ─── DANFSE (PDF da NFS-e) ───
 
-export async function fetchDanfsePdf(chaveAcesso: string, ambiente: 1 | 2 = 1): Promise<{ success: boolean; pdfBase64?: string; error?: string }> {
+export async function fetchDanfsePdf(chaveAcesso: string, _ambiente: 1 | 2 = 1): Promise<{ success: boolean; pdfBase64?: string; error?: string }> {
   try {
     const cert = loadCertificate();
-    const apiUrl = `${API_URLS[ambiente]}/danfse/${chaveAcesso}`;
+    // URL correta do DANFSE - migrou de sefin.nfse.gov.br para adn.nfse.gov.br em set/2025
+    const apiUrl = `https://adn.nfse.gov.br/danfse/${chaveAcesso}`;
     console.log(`📄 Buscando DANFSE PDF: GET ${apiUrl}`);
 
     const response = await makeRequest(apiUrl, 'GET', '', cert, 'application/pdf', 0, true);
