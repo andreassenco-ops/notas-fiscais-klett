@@ -1,39 +1,37 @@
 /**
- * API Client for local worker backend
+ * API Client for Railway Worker backend
  * 
- * Replaces Supabase SDK calls with direct HTTP calls to the worker API.
- * The worker URL is configurable via localStorage or falls back to
- * the Supabase Edge Function proxy path.
+ * Uses WORKER_API_URL from Supabase secrets (via edge function proxy)
+ * or a configurable URL stored in localStorage for development.
  */
 
 const WORKER_URL_KEY = 'klett_worker_url';
-const NGROK_URL = 'https://absorptive-piebaldly-cordell.ngrok-free.dev';
-
-// Limpar URLs antigas de Cloudflare que ficaram no localStorage
-if (typeof window !== 'undefined') {
-  const old = localStorage.getItem(WORKER_URL_KEY);
-  if (old && old.includes('trycloudflare.com')) {
-    localStorage.removeItem(WORKER_URL_KEY);
-  }
-}
 
 /**
  * Get the configured worker API URL.
- * Priority: localStorage > ngrok static domain
+ * Priority: localStorage override > edge function (WORKER_API_URL secret)
+ * 
+ * For production, the frontend calls the worker directly via the Railway URL.
+ * The URL is stored in localStorage after being configured in Settings.
  */
 export function getWorkerUrl(): string {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem(WORKER_URL_KEY);
     if (stored) return stored.replace(/\/+$/, '');
   }
-  return NGROK_URL;
+  // Fallback: empty string means not configured
+  return '';
 }
 
 /**
  * Set the worker API URL in localStorage
  */
 export function setWorkerUrl(url: string): void {
-  localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, ''));
+  if (url) {
+    localStorage.setItem(WORKER_URL_KEY, url.replace(/\/+$/, ''));
+  } else {
+    localStorage.removeItem(WORKER_URL_KEY);
+  }
 }
 
 /**
@@ -60,7 +58,6 @@ async function workerFetch<T = unknown>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
       ...options.headers,
     },
   });
