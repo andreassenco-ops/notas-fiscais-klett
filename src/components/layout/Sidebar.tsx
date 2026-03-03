@@ -10,7 +10,6 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import klettLogo from "@/assets/klett-logo.png";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Notas Fiscais", href: "/notas-fiscais", icon: Receipt },
   { name: "Configurações", href: "/settings", icon: Settings },
 ];
