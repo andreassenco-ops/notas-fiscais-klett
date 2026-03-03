@@ -379,28 +379,23 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       }
     }
 
-    // 4. Enviar para API via mTLS (com fallback de endpoint/content-type)
-    const baseUrl = API_URLS[request.ambiente];
-    const attempts = [
-      { url: `${baseUrl}/nfse`, contentType: 'application/xml; charset=utf-8' },
-      { url: `${baseUrl}`, contentType: 'application/xml; charset=utf-8' },
-      { url: `${baseUrl}/nfse`, contentType: 'text/xml; charset=utf-8' },
-      { url: `${baseUrl}`, contentType: 'text/xml; charset=utf-8' },
-    ];
+    // 4. Enviar para API via mTLS
+    const apiUrl = `${API_URLS[request.ambiente]}/nfse`;
+    console.log(`📤 Enviando para ${apiUrl}...`);
+    console.log(`📤 XML (primeiros 500 chars): ${signedXml.substring(0, 500)}`);
 
-    let response = { statusCode: 599, body: '' };
-    for (const attempt of attempts) {
-      console.log(`📤 Enviando para ${attempt.url} (${attempt.contentType})...`);
-      response = await makeRequest(attempt.url, 'POST', signedXml, cert, attempt.contentType);
-      console.log(`📥 Resposta tentativa: HTTP ${response.statusCode} (${response.body.length} bytes)`);
+    let response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'application/xml; charset=utf-8');
 
-      // Para no primeiro resultado que não seja "formato/rota" inválido
-      if (response.statusCode < 400 || (response.statusCode !== 404 && response.statusCode !== 415)) {
-        break;
-      }
+    // Log detalhado da resposta para diagnóstico
+    console.log(`📥 Resposta: HTTP ${response.statusCode}`);
+    console.log(`📥 Body (primeiros 500 chars): ${response.body.substring(0, 500)}`);
+
+    // Fallback: se 415 tentar text/xml
+    if (response.statusCode === 415) {
+      console.warn('⚠️ HTTP 415, tentando text/xml...');
+      response = await makeRequest(apiUrl, 'POST', signedXml, cert, 'text/xml; charset=utf-8');
+      console.log(`📥 Retry: HTTP ${response.statusCode} - ${response.body.substring(0, 500)}`);
     }
-
-    console.log(`📦 Resposta final: HTTP ${response.statusCode} (${response.body.length} bytes)`);
 
     // 5. Processar resposta
     if (response.statusCode >= 200 && response.statusCode < 300) {

@@ -905,7 +905,7 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
       return;
     }
 
-    const results: Array<{ protocolo: string; success: boolean; chNFSe?: string; error?: string }> = [];
+    const results: Array<{ protocolo: string; success: boolean; chNFSe?: string; error?: string; detalhes?: unknown }> = [];
     let emitidas = 0;
     let erros = 0;
 
@@ -926,6 +926,7 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
         success: result.success,
         chNFSe: result.chNFSe,
         error: result.error,
+        detalhes: result.detalhes,
       });
 
       if (result.success) emitidas++;
