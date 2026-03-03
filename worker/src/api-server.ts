@@ -10,7 +10,7 @@ import { config } from './config';
 import { getWhatsAppSession, updateWhatsAppSession, logEvent, getWhatsAppLockStatus } from './supabase';
 import { checkRealConnection, getConnectionStats, isConnected, disconnect, getWorkerId, forceClientReset, resumeAutoReconnect, isAutoReconnectBlocked, sendMessage, getCooldownStatus } from './whatsapp';
 import * as pgRoutes from './pg-routes';
-import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, NfseResult } from './nfse';
+import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, fetchDanfsePdf, NfseResult } from './nfse';
 
 const PORT = process.env.PORT || 3000;
 
@@ -955,6 +955,27 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
   }
 }
 
+async function handleNfseDanfse(url: URL, res: http.ServerResponse): Promise<void> {
+  const chave = url.searchParams.get('chave');
+  const ambiente = Number(url.searchParams.get('ambiente') || '1') as 1 | 2;
+
+  if (!chave) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'Parâmetro chave é obrigatório' }));
+    return;
+  }
+
+  try {
+    const result = await fetchDanfsePdf(chave, ambiente);
+    res.writeHead(result.success ? 200 : 422, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+  } catch (error) {
+    console.error('❌ Erro ao buscar DANFSE:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' }));
+  }
+}
+
 /**
  * CORS headers
  */
@@ -1006,6 +1027,8 @@ export function startApiServer(): http.Server {
         await handleNfseEmitir(req, res);
       } else if (url.pathname === '/api/nfse/emitir-lote' && req.method === 'POST') {
         await handleNfseEmitirLote(req, res);
+      } else if (url.pathname === '/api/nfse/danfse' && req.method === 'GET') {
+        await handleNfseDanfse(url, res);
 
       // ─── PostgreSQL local routes (replaces Supabase SDK) ───
       } else if (url.pathname === '/api/pg/queue-stats' && req.method === 'GET') {

@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -94,14 +94,29 @@ const formatDate = (val: unknown) => {
 
 // ─── NFS-e Status Badge ───
 
-function NfseStatusBadge({ row }: { row: NotaFiscalRow }) {
+function NfseStatusBadge({ row, ambiente, onDownloadPdf }: { row: NotaFiscalRow; ambiente: string; onDownloadPdf: (chave: string) => void }) {
   if (!row._nfseStatus) return null;
   
   switch (row._nfseStatus) {
     case "emitting":
       return <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" />Emitindo...</Badge>;
     case "success":
-      return <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>;
+      return (
+        <div className="flex items-center gap-1">
+          <Badge className="gap-1 bg-green-600"><CheckCircle2 className="h-3 w-3" />Emitida</Badge>
+          {row._nfseChave && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title="Baixar PDF da NFS-e"
+              onClick={() => onDownloadPdf(row._nfseChave!)}
+            >
+              <FileDown className="h-3.5 w-3.5 text-primary" />
+            </Button>
+          )}
+        </div>
+      );
     case "error":
       return (
         <Badge variant="destructive" className="gap-1" title={row._nfseError}>
@@ -260,6 +275,30 @@ export default function NotasFiscais() {
     } finally {
       setEmittingLote(false);
       setSelectedRows(new Set());
+    }
+  };
+
+  const downloadDanfse = async (chave: string) => {
+    try {
+      toast.info("Buscando PDF da NFS-e...");
+      const result = await api.fetchDanfse(chave, Number(ambiente) as 1 | 2);
+      if (result.success && result.pdfBase64) {
+        const blob = new Blob(
+          [Uint8Array.from(atob(result.pdfBase64), (c) => c.charCodeAt(0))],
+          { type: "application/pdf" }
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `nfse-${chave}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+        toast.success("PDF baixado com sucesso!");
+      } else {
+        toast.error(result.error || "Erro ao buscar PDF");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao buscar PDF");
     }
   };
 
@@ -482,7 +521,7 @@ export default function NotasFiscais() {
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
                         </TableCell>
                         <TableCell>
-                          <NfseStatusBadge row={row} />
+                          <NfseStatusBadge row={row} ambiente={ambiente} onDownloadPdf={downloadDanfse} />
                         </TableCell>
                       </TableRow>
                     ))}
