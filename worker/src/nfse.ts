@@ -292,11 +292,6 @@ function buildDpsXml(req: NfseRequest): string {
             <pTotTribEst>${formatDecimal(pTotTribEst)}</pTotTribEst>
             <pTotTribMun>${formatDecimal(pTotTribMun)}</pTotTribMun>
           </pTotTrib>
-          <vTotTrib>
-            <vTotTribFed>${formatDecimal(vTotTribFed)}</vTotTribFed>
-            <vTotTribEst>${formatDecimal(vTotTribEst)}</vTotTribEst>
-            <vTotTribMun>${formatDecimal(vTotTribMun)}</vTotTribMun>
-          </vTotTrib>
         </totTrib>
       </trib>
     </valores>
