@@ -72,39 +72,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get Worker API URL from environment
-    const workerApiUrlRaw = Deno.env.get("WORKER_API_URL");
-
-    if (!workerApiUrlRaw) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Worker não configurado (WORKER_API_URL ausente).",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Normalize URL (accept values like "lab-results....up.railway.app" and add https://)
-    let workerBaseUrl = workerApiUrlRaw.trim();
-    if (!/^https?:\/\//i.test(workerBaseUrl)) {
-      workerBaseUrl = `https://${workerBaseUrl}`;
-    }
-
-    // Validate URL early to return a clearer error
-    try {
-      // eslint-disable-next-line no-new
-      new URL(workerBaseUrl);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            "WORKER_API_URL inválida. Use um domínio completo, ex: https://seu-app.up.railway.app",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Worker URL hardcoded (Railway)
+    const workerBaseUrl = "https://dede-zap-production.up.railway.app";
 
     // Proxy the request to the Worker
     const workerEndpoint = `${workerBaseUrl.replace(/\/$/, "")}/api/test-query`;
