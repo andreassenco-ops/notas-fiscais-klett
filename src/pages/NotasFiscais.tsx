@@ -403,7 +403,8 @@ export default function NotasFiscais() {
             const state: NfseState = {
               status: finalStatus,
               chave: match.chNFSe,
-              numero: match.nDFSe || match.nNFSe || match.nDPS,
+              // Número oficial exibido no portal nacional: nNFSe
+              numero: match.nNFSe || match.nDFSe || match.nDPS,
               error: isAlreadyEmitted ? "Já emitida anteriormente" : match.error,
               pdfUrl,
             };
@@ -434,7 +435,8 @@ export default function NotasFiscais() {
         const dbRows = successResults.map((r: any) => ({
           protocolo: r.protocolo,
           chave_acesso: r.chNFSe || null,
-          numero_nota: r.nDFSe || r.nNFSe || null,
+          // Persistir nNFSe para manter alinhado com o número da nota exibido no portal
+          numero_nota: r.nNFSe || r.nDFSe || null,
           ndps: r.nDPS || null,
           valor: r.dados?.valor || null,
           paciente_nome: r.dados?.pacienteNome || null,
