@@ -506,7 +506,11 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       if (nNFSeMatch) nNFSe = nNFSeMatch[1];
       const nDFSeMatch = nfseXml.match(/<nDFSe>(\d+)<\/nDFSe>/);
       if (nDFSeMatch) nDFSe = nDFSeMatch[1];
+      // Fallback to JSON response fields
       if (!nNFSe && parsed?.nNFSe) nNFSe = String(parsed.nNFSe);
+      if (!nDFSe && parsed?.nDFSe) nDFSe = String(parsed.nDFSe);
+      // If we have nNFSe but not nDFSe, use nNFSe as nDFSe (they're often the same)
+      if (!nDFSe && nNFSe) nDFSe = nNFSe;
 
       // Try to fetch DANFSE PDF
       let pdfBase64: string | undefined;
@@ -628,11 +632,15 @@ export async function emitirNFSeFromProtocolo(params: {
   observacao?: string;
   ambiente?: 1 | 2;
   nDPS: string;
+  dataAtendimento?: string; // YYYY-MM-DD format from frontend
 }): Promise<NfseResult> {
   const hoje = new Date().toISOString().slice(0, 10);
+  
+  // Use provided service date, fallback to today
+  const dataBase = params.dataAtendimento || hoje;
   // Formatar data de atendimento como DD-MM-AAAA
-  const parts = hoje.split('-');
-  const dataAtend = `${parts[2]}-${parts[1]}-${parts[0]}`;
+  const parts = dataBase.split('-');
+  const dataAtend = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : dataBase;
 
   return emitirNFSe({
     ambiente: params.ambiente || 2,
