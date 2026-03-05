@@ -44,29 +44,28 @@ interface NotaFiscalRow {
 function buildQuery(dateStr: string): string {
   return `SELECT 
   SOLICITACAO.LOCAL + '-' + dbo.MASCARA(SOLICITACAO.PROTOCOLO,'000000') AS PROTOCOLOC,
-  SOLICITACAO_PAGAMENTOS.DATA [DATA DO PAGAMENTO],
+  CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23) AS [DATA DO PAGAMENTO],
   SOLICITACAO_GUIA.CONVENIO,
   PACIENTE.NOME,
   PACIENTE.CPF,
   PACIENTE.NOME_PAI [OBSERVAÇÃO],
   SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO [FORMA DE PAGAMENTO],
-  SOLICITACAO_PAGAMENTOS.VALOR [VALOR TOTAL DO PAGAMENTO]
+  SUM(SOLICITACAO_PAGAMENTOS.VALOR) [VALOR TOTAL DO PAGAMENTO]
 FROM SOLICITACAO
 INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTOS.SOLICITACAO_GUIA_ID
 INNER JOIN PACIENTE ON (PACIENTE.ID = SOLICITACAO.PACIENTE)
 INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
  WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN '${dateStr}' AND '${dateStr}'
-  AND SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO NOT IN ('DINHEIRO', 'DINHEIROTOX', 'CARTAO CREDITO TOX')
+  AND UPPER(LTRIM(RTRIM(SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO))) NOT IN ('DINHEIRO', 'DINHEIROTOX', 'CARTAO CREDITO TOX')
   AND SOLICITACAO.LOCAL != '09'
 GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
-  SOLICITACAO_PAGAMENTOS.DATA,
+  CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23),
   SOLICITACAO_GUIA.CONVENIO,
   PACIENTE.NOME,
   PACIENTE.CPF,
   PACIENTE.NOME_PAI,
-  SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO,
-  SOLICITACAO_PAGAMENTOS.VALOR`;
+  SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO`;
 }
 
 // ─── Helper functions ───
@@ -88,7 +87,13 @@ const formatCPF = (cpf: string) => {
 const formatDate = (val: unknown) => {
   if (!val) return "—";
   try {
-    return new Date(String(val)).toLocaleDateString("pt-BR");
+    const str = String(val);
+    // If already in YYYY-MM-DD format (from SQL CONVERT), parse without timezone shift
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+    return new Date(str).toLocaleDateString("pt-BR");
   } catch {
     return String(val);
   }
@@ -359,6 +364,7 @@ export default function NotasFiscais() {
         cpf: String(r.CPF).replace(/\D/g, ""),
         valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
         formaPagamento: r["FORMA DE PAGAMENTO"],
+        dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
       }));
 
       const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
@@ -469,14 +475,18 @@ export default function NotasFiscais() {
       "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF",
       "FORMA DE PAGAMENTO", "VALOR TOTAL DO PAGAMENTO", "OBSERVAÇÃO"
     ];
-    const header = displayCols.join(";");
-    const csvRows = filteredRows.map((row) =>
-      displayCols.map((col) => {
+    const extraHeader = "Nº Nota Fiscal";
+    const header = [...displayCols, extraHeader].join(";");
+    const csvRows = filteredRows.map((row) => {
+      const baseCols = displayCols.map((col) => {
         const val = row[col];
         if (val === null || val === undefined) return "";
         return String(val).replace(/;/g, ",");
-      }).join(";")
-    );
+      });
+      // Append NF number
+      baseCols.push(row._nfseNumero || "");
+      return baseCols.join(";");
+    });
     const csv = [header, ...csvRows].join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

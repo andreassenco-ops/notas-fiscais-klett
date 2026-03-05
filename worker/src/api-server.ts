@@ -858,7 +858,7 @@ async function handleNfseEmitir(req: http.IncomingMessage, res: http.ServerRespo
 
   try {
     const params = JSON.parse(body);
-    const { protocolo, pacienteNome, cpf, valor, formaPagamento, observacao, ambiente } = params;
+    const { protocolo, pacienteNome, cpf, valor, formaPagamento, observacao, ambiente, dataAtendimento } = params;
 
     if (!protocolo || !pacienteNome || !cpf || !valor) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -866,7 +866,6 @@ async function handleNfseEmitir(req: http.IncomingMessage, res: http.ServerRespo
       return;
     }
 
-    // Gerar nDPS sequencial baseado em timestamp
     const nDPS = String(Date.now()).slice(-10);
 
     const result = await emitirNFSeFromProtocolo({
@@ -878,6 +877,7 @@ async function handleNfseEmitir(req: http.IncomingMessage, res: http.ServerRespo
       observacao,
       ambiente: ambiente || 2,
       nDPS,
+      dataAtendimento,
     });
 
     res.writeHead(result.success ? 200 : 422, { 'Content-Type': 'application/json' });
@@ -919,6 +919,7 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
         formaPagamento: item.formaPagamento,
         ambiente: ambiente || 2,
         nDPS,
+        dataAtendimento: item.dataAtendimento,
       });
 
       results.push({
