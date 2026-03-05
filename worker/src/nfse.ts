@@ -499,18 +499,24 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
         } catch { /* ignore */ }
       }
 
-      // Extract nNFSe and nDFSe from XML if available
+      // Extract nNFSe and nDFSe from XML if available (handle namespace prefixes)
       let nNFSe: string | undefined;
       let nDFSe: string | undefined;
-      const nNFSeMatch = nfseXml.match(/<nNFSe>(\d+)<\/nNFSe>/);
+      // Regex handles optional namespace prefix e.g. <ns3:nDFSe>, <NFSe:nDFSe>, <nDFSe>
+      const nNFSeMatch = nfseXml.match(/<(?:\w+:)?nNFSe>(\d+)<\/(?:\w+:)?nNFSe>/);
       if (nNFSeMatch) nNFSe = nNFSeMatch[1];
-      const nDFSeMatch = nfseXml.match(/<nDFSe>(\d+)<\/nDFSe>/);
+      const nDFSeMatch = nfseXml.match(/<(?:\w+:)?nDFSe>(\d+)<\/(?:\w+:)?nDFSe>/);
       if (nDFSeMatch) nDFSe = nDFSeMatch[1];
       // Fallback to JSON response fields
       if (!nNFSe && parsed?.nNFSe) nNFSe = String(parsed.nNFSe);
       if (!nDFSe && parsed?.nDFSe) nDFSe = String(parsed.nDFSe);
+      // Also check nested paths common in Sefin responses
+      if (!nDFSe && parsed?.nfse?.infNFSe?.nDFSe) nDFSe = String(parsed.nfse.infNFSe.nDFSe);
+      if (!nNFSe && parsed?.nfse?.infNFSe?.nNFSe) nNFSe = String(parsed.nfse.infNFSe.nNFSe);
       // If we have nNFSe but not nDFSe, use nNFSe as nDFSe (they're often the same)
       if (!nDFSe && nNFSe) nDFSe = nNFSe;
+      
+      console.log(`📋 Números extraídos - nDFSe: ${nDFSe || 'N/A'}, nNFSe: ${nNFSe || 'N/A'}, nDPS: ${request.nDPS}`);
 
       // Try to fetch DANFSE PDF
       let pdfBase64: string | undefined;
