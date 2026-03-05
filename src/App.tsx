@@ -8,7 +8,6 @@ import { PatientAuthProvider } from "@/contexts/PatientAuthContext";
 import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
 import { RequirePatientAuth } from "@/components/auth/RequirePatientAuth";
 import { RequireAdminAuth } from "@/components/auth/RequireAdminAuth";
-import Dashboard from "./pages/Dashboard";
 import WhatsAppConnection from "./pages/WhatsAppConnection";
 import Models from "./pages/Models";
 import ModelEdit from "./pages/ModelEdit";
@@ -34,11 +33,7 @@ function HomeRoute() {
     return <Navigate to="/paciente" replace />;
   }
   
-  return (
-    <RequireAdminAuth>
-      <Dashboard />
-    </RequireAdminAuth>
-  );
+  return <Navigate to="/notas-fiscais" replace />;
 }
 
 const App = () => (
