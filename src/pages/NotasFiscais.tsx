@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -41,7 +41,7 @@ interface NotaFiscalRow {
   _nfsePdfUrl?: string;
 }
 
-function buildQuery(dateStr: string): string {
+function buildQuery(dateFrom: string, dateTo: string): string {
   return `SELECT 
   SOLICITACAO.LOCAL + '-' + dbo.MASCARA(SOLICITACAO.PROTOCOLO,'000000') AS PROTOCOLOC,
   CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23) AS [DATA DO PAGAMENTO],
@@ -56,7 +56,7 @@ INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTOS.SOLICITACAO_GUIA_ID
 INNER JOIN PACIENTE ON (PACIENTE.ID = SOLICITACAO.PACIENTE)
 INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
- WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN '${dateStr}' AND '${dateStr}'
+ WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN '${dateFrom}' AND '${dateTo}'
   AND SOLICITACAO.LOCAL != '09'
 GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
   CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23),
@@ -172,7 +172,10 @@ export default function NotasFiscais() {
   // Default to yesterday
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const [queryDate, setQueryDate] = useState<Date>(yesterday);
+  const [dateFrom, setDateFrom] = useState<Date>(yesterday);
+  const [dateTo, setDateTo] = useState<Date>(yesterday);
+  const [observacoes, setObservacoes] = useState<Map<string, string>>(new Map());
+  const [savingObs, setSavingObs] = useState<Set<string>>(new Set());
 
   // Helper: apply nfseStore state to rows
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
@@ -194,10 +197,11 @@ export default function NotasFiscais() {
 
   const runQuery = async () => {
     setLoading(true);
-    const dateStr = format(queryDate, "yyyy-MM-dd");
+    const dateFromStr = format(dateFrom, "yyyy-MM-dd");
+    const dateToStr = format(dateTo, "yyyy-MM-dd");
     try {
       const { data: result, error } = await supabase.functions.invoke('test-sql-query', {
-        body: { sql_query: buildQuery(dateStr), limit: 1000 },
+        body: { sql_query: buildQuery(dateFromStr, dateToStr), limit: 1000 },
       });
 
       if (error) {
@@ -221,18 +225,25 @@ export default function NotasFiscais() {
         const protocolos = rawRows.map(r => r.PROTOCOLOC);
         const { data: emitidas } = await supabase
           .from('nfse_emitidas')
-          .select('protocolo, chave_acesso, numero_nota, ndps')
+          .select('protocolo, chave_acesso, numero_nota, ndps, observacao')
           .in('protocolo', protocolos);
         
         if (emitidas && emitidas.length > 0) {
           const dbStore = new Map<string, NfseState>();
+          const obsMap = new Map<string, string>();
           for (const e of emitidas) {
             dbStore.set(e.protocolo, {
               status: "success",
               chave: e.chave_acesso || undefined,
               numero: e.numero_nota || e.ndps || undefined,
             });
+            if (e.observacao) obsMap.set(e.protocolo, e.observacao);
           }
+          setObservacoes((prev) => {
+            const next = new Map(prev);
+            obsMap.forEach((v, k) => next.set(k, v));
+            return next;
+          });
           setNfseStore((prev) => {
             const next = new Map(prev);
             dbStore.forEach((v, k) => next.set(k, v));
@@ -478,7 +489,30 @@ export default function NotasFiscais() {
     }
   };
 
-
+  const saveObservacao = async (protocolo: string, obs: string) => {
+    setSavingObs((prev) => new Set(prev).add(protocolo));
+    try {
+      // Upsert into nfse_emitidas with just observacao
+      await supabase.from('nfse_emitidas').upsert(
+        { protocolo, observacao: obs || null },
+        { onConflict: 'protocolo' }
+      );
+      setObservacoes((prev) => {
+        const next = new Map(prev);
+        next.set(protocolo, obs);
+        return next;
+      });
+      toast.success("Observação salva");
+    } catch {
+      toast.error("Erro ao salvar observação");
+    } finally {
+      setSavingObs((prev) => {
+        const next = new Set(prev);
+        next.delete(protocolo);
+        return next;
+      });
+    }
+  };
 
   const exportCSV = () => {
     if (!filteredRows.length) return;
@@ -529,24 +563,55 @@ export default function NotasFiscais() {
               Notas Fiscais
             </h1>
             <p className="text-muted-foreground mt-1">
-              Consulta de pagamentos do dia e emissão de NFS-e Nacional
+              Consulta de pagamentos por período e emissão de NFS-e Nacional
             </p>
           </div>
           <div className="flex gap-2 flex-wrap items-end">
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground font-medium">Data da consulta</span>
+              <span className="text-xs text-muted-foreground font-medium">Data inicial</span>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-44 justify-start text-left font-normal", !queryDate && "text-muted-foreground")}>
+                  <Button variant="outline" className={cn("w-40 justify-start text-left font-normal")}>
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {queryDate ? format(queryDate, "dd/MM/yyyy") : "Selecionar data"}
+                    {format(dateFrom, "dd/MM/yyyy")}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={queryDate}
-                    onSelect={(d) => d && setQueryDate(d)}
+                    selected={dateFrom}
+                    onSelect={(d) => {
+                      if (d) {
+                        setDateFrom(d);
+                        if (d > dateTo) setDateTo(d);
+                      }
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground font-medium">Data final</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-40 justify-start text-left font-normal")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(dateTo, "dd/MM/yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={(d) => {
+                      if (d) {
+                        if (d < dateFrom) setDateFrom(d);
+                        setDateTo(d);
+                      }
+                    }}
                     locale={ptBR}
                     initialFocus
                     className={cn("p-3 pointer-events-auto")}
@@ -711,7 +776,7 @@ export default function NotasFiscais() {
               </div>
             ) : filteredRows.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Nenhum pagamento encontrado para {format(queryDate, "dd/MM/yyyy")}.</p>
+                <p>Nenhum pagamento encontrado para o período selecionado.</p>
               </div>
             ) : (
               <div className="rounded-md border overflow-x-auto">
@@ -733,6 +798,7 @@ export default function NotasFiscais() {
                       <TableHead className="text-right w-32">Valor Total</TableHead>
                       <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
+                      <TableHead className="w-48">Observação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -773,6 +839,28 @@ export default function NotasFiscais() {
                         </TableCell>
                         <TableCell>
                           <NfseStatusBadge row={row} onDownloadPdf={handleDownloadPdf} />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              className="h-7 text-xs min-w-[120px]"
+                              placeholder="Obs..."
+                              defaultValue={observacoes.get(row.PROTOCOLOC) || ""}
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val !== (observacoes.get(row.PROTOCOLOC) || "")) {
+                                  saveObservacao(row.PROTOCOLOC, val);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                              disabled={savingObs.has(row.PROTOCOLOC)}
+                            />
+                            {savingObs.has(row.PROTOCOLOC) && <Loader2 className="h-3 w-3 animate-spin" />}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

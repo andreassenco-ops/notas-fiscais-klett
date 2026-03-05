@@ -96,6 +96,7 @@ export type Database = {
           id: string
           ndps: string | null
           numero_nota: string | null
+          observacao: string | null
           paciente_nome: string | null
           protocolo: string
           valor: number | null
@@ -107,6 +108,7 @@ export type Database = {
           id?: string
           ndps?: string | null
           numero_nota?: string | null
+          observacao?: string | null
           paciente_nome?: string | null
           protocolo: string
           valor?: number | null
@@ -118,6 +120,7 @@ export type Database = {
           id?: string
           ndps?: string | null
           numero_nota?: string | null
+          observacao?: string | null
           paciente_nome?: string | null
           protocolo?: string
           valor?: number | null
