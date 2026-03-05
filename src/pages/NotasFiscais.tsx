@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ function buildQuery(dateStr: string): string {
   PACIENTE.NOME,
   PACIENTE.CPF,
   PACIENTE.NOME_PAI [OBSERVAÇÃO],
-  SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO [FORMA DE PAGAMENTO],
+  UPPER(LTRIM(RTRIM(SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO))) [FORMA DE PAGAMENTO],
   SUM(SOLICITACAO_PAGAMENTOS.VALOR) [VALOR TOTAL DO PAGAMENTO]
 FROM SOLICITACAO
 INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
@@ -57,7 +57,6 @@ INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTO
 INNER JOIN PACIENTE ON (PACIENTE.ID = SOLICITACAO.PACIENTE)
 INNER JOIN LOCAL ON (LOCAL.ID = SOLICITACAO.LOCAL)
  WHERE SOLICITACAO_PAGAMENTOS.DATA BETWEEN '${dateStr}' AND '${dateStr}'
-  AND UPPER(LTRIM(RTRIM(SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO))) NOT IN ('DINHEIRO', 'DINHEIROTOX', 'CARTAO CREDITO TOX')
   AND SOLICITACAO.LOCAL != '09'
 GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
   CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23),
@@ -166,6 +165,9 @@ export default function NotasFiscais() {
   const [emittingLote, setEmittingLote] = useState(false);
   const [ambiente] = useState<"1">("1");
   const [nfseStore, setNfseStore] = useState<Map<string, NfseState>>(new Map());
+  const [availablePaymentTypes, setAvailablePaymentTypes] = useState<string[]>([]);
+  const [excludedPaymentTypes, setExcludedPaymentTypes] = useState<Set<string>>(new Set(["DINHEIRO", "DINHEIROTOX", "CARTAO CREDITO TOX"]));
+  const [paymentFilterOpen, setPaymentFilterOpen] = useState(false);
   
   // Default to yesterday
   const yesterday = new Date();
@@ -210,6 +212,10 @@ export default function NotasFiscais() {
 
       const rawRows: NotaFiscalRow[] = result.rows || [];
       
+      // Extract unique payment types
+      const paymentTypes = [...new Set(rawRows.map(r => r["FORMA DE PAGAMENTO"]).filter(Boolean))].sort();
+      setAvailablePaymentTypes(paymentTypes);
+
       // Fetch already-emitted notes from database
       if (rawRows.length > 0) {
         const protocolos = rawRows.map(r => r.PROTOCOLOC);
@@ -227,13 +233,11 @@ export default function NotasFiscais() {
               numero: e.numero_nota || e.ndps || undefined,
             });
           }
-          // Merge db data into nfseStore
           setNfseStore((prev) => {
             const next = new Map(prev);
             dbStore.forEach((v, k) => next.set(k, v));
             return next;
           });
-          // Apply combined state
           const combinedStore = new Map(nfseStore);
           dbStore.forEach((v, k) => combinedStore.set(k, v));
           setRows(applyNfseState(rawRows, combinedStore));
@@ -246,7 +250,7 @@ export default function NotasFiscais() {
 
       setHasQueried(true);
       setSelectedRows(new Set());
-      toast.success(`${rawRows.length} protocolos encontrados`);
+      toast.success(`${rawRows.length} registros encontrados`);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Erro ao consultar"
@@ -296,8 +300,13 @@ export default function NotasFiscais() {
     }
   };
 
+  // Apply payment type filter, then text search
+  const paymentFilteredRows = rows.filter(
+    (row) => !excludedPaymentTypes.has(row["FORMA DE PAGAMENTO"])
+  );
+
   const filteredRows = searchTerm
-    ? rows.filter((row) =>
+    ? paymentFilteredRows.filter((row) =>
         Object.values(row).some(
           (val) =>
             val &&
@@ -305,7 +314,7 @@ export default function NotasFiscais() {
             val.toLowerCase().includes(searchTerm.toLowerCase())
         )
       )
-    : rows;
+    : paymentFilteredRows;
 
   const toggleSelect = (idx: number) => {
     setSelectedRows((prev) => {
@@ -560,13 +569,77 @@ export default function NotasFiscais() {
           </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Payment Type Filter */}
+        {hasQueried && availablePaymentTypes.length > 0 && (
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Filter className="h-4 w-4" />
+                  Formas de pagamento:
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => setExcludedPaymentTypes(new Set())}
+                  >
+                    Marcar todos
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => setExcludedPaymentTypes(new Set(availablePaymentTypes))}
+                  >
+                    Desmarcar todos
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {availablePaymentTypes.map((type) => {
+                  const isIncluded = !excludedPaymentTypes.has(type);
+                  const count = rows.filter(r => r["FORMA DE PAGAMENTO"] === type).length;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        setExcludedPaymentTypes((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(type)) next.delete(type);
+                          else next.add(type);
+                          return next;
+                        });
+                        setSelectedRows(new Set());
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                        isIncluded
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border line-through opacity-60"
+                      )}
+                    >
+                      {type} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {hasQueried && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Protocolos</div>
-                <div className="text-2xl font-bold text-foreground">{filteredRows.length}</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {filteredRows.length}
+                  {filteredRows.length !== rows.length && (
+                    <span className="text-sm font-normal text-muted-foreground ml-1">/ {rows.length} total</span>
+                  )}
+                </div>
               </CardContent>
             </Card>
             <Card>
