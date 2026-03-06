@@ -843,6 +843,7 @@ export default function NotasFiscais() {
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Input
+                              key={`obs-${row.PROTOCOLOC}-${observacoes.get(row.PROTOCOLOC) || ""}`}
                               className="h-7 text-xs min-w-[120px]"
                               placeholder="Obs..."
                               defaultValue={observacoes.get(row.PROTOCOLOC) || ""}
