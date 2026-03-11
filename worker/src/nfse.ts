@@ -11,6 +11,41 @@ import https from 'https';
 import crypto from 'crypto';
 import tls from 'tls';
 import zlib from 'zlib';
+import fs from 'fs';
+import path from 'path';
+
+// ─── Pasta local para salvar PDFs ───
+const DANFSE_DIR = path.resolve(process.cwd(), 'danfse-pdfs');
+if (!fs.existsSync(DANFSE_DIR)) {
+  fs.mkdirSync(DANFSE_DIR, { recursive: true });
+}
+
+/**
+ * Salva o PDF do DANFSE em disco local
+ */
+export function saveDanfsePdf(chaveAcesso: string, pdfBase64: string, protocolo?: string): string {
+  const filename = protocolo
+    ? `${protocolo.replace(/[^a-zA-Z0-9\-_]/g, '_')}_${chaveAcesso.slice(-10)}.pdf`
+    : `${chaveAcesso}.pdf`;
+  const filepath = path.join(DANFSE_DIR, filename);
+  fs.writeFileSync(filepath, Buffer.from(pdfBase64, 'base64'));
+  console.log(`💾 DANFSE PDF salvo: ${filepath}`);
+  return filepath;
+}
+
+/**
+ * Retorna o caminho do PDF salvo, se existir
+ */
+export function getDanfsePdfPath(chaveAcesso: string): string | null {
+  // Procura qualquer arquivo que contenha a chave de acesso
+  const files = fs.readdirSync(DANFSE_DIR);
+  const match = files.find(f => f.includes(chaveAcesso) || f.includes(chaveAcesso.slice(-10)));
+  return match ? path.join(DANFSE_DIR, match) : null;
+}
+
+export function getDanfseDir(): string {
+  return DANFSE_DIR;
+}
 
 // ─── Tipos ───
 
