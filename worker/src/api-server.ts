@@ -10,7 +10,9 @@ import { config } from './config';
 import { getWhatsAppSession, updateWhatsAppSession, logEvent, getWhatsAppLockStatus } from './supabase';
 import { checkRealConnection, getConnectionStats, isConnected, disconnect, getWorkerId, forceClientReset, resumeAutoReconnect, isAutoReconnectBlocked, sendMessage, getCooldownStatus } from './whatsapp';
 import * as pgRoutes from './pg-routes';
-import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, fetchDanfsePdf, NfseResult } from './nfse';
+import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, fetchDanfsePdf, NfseResult, saveDanfsePdf, getDanfsePdfPath, getDanfseDir } from './nfse';
+import fs from 'fs';
+import path from 'path';
 
 const PORT = process.env.PORT || 3000;
 
