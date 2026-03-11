@@ -1225,6 +1225,8 @@ export function startApiServer(): http.Server {
         await handleNfseEmitirLote(req, res);
       } else if (url.pathname === '/api/nfse/danfse' && req.method === 'GET') {
         await handleNfseDanfse(url, res);
+      } else if (url.pathname === '/api/nfse/danfse-pdf' && req.method === 'GET') {
+        await handleDanfsePdfFile(url, res);
       } else if (url.pathname === '/api/nfse/enqueue-whatsapp' && req.method === 'POST') {
         await handleNfseEnqueueWhatsapp(req, res);
 
