@@ -195,6 +195,21 @@ export const api = {
 
   // ─── NFS-e ───
   getNfseStatus: () => workerFetch<{ configured: boolean }>('/api/nfse/status'),
+
+  enqueueNfseWhatsapp: (items: Array<{
+    protocolo: string;
+    pacienteNome: string;
+    cpf: string;
+    valor: number;
+    chaveAcesso: string;
+  }>) => workerFetch<{
+    results: Array<{ protocolo: string; success: boolean; error?: string; phone?: string }>;
+    enqueued: number;
+    total: number;
+  }>('/api/nfse/enqueue-whatsapp', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  }),
   emitirNfse: (params: {
     protocolo: string;
     pacienteNome: string;

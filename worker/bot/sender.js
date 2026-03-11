@@ -36,7 +36,9 @@ function createSender(page, cfg) {
       .replace(/\[\[NOME\]\]/g, `*${item.variables?.NOME || item.patient_name || 'Cliente'}*`)
       .replace(/\[\[PROTOCOLO\]\]/g, `*${item.protocol}*`)
       .replace(/\[\[URL\]\]/g, item.result_link || '')
-      .replace(/\[\[UNIDADE\]\]/g, item.variables?.UNIDADE || '');
+      .replace(/\[\[UNIDADE\]\]/g, item.variables?.UNIDADE || '')
+      .replace(/\[\[CHAVE\]\]/g, item.variables?.CHAVE || '')
+      .replace(/\[\[VALOR\]\]/g, item.variables?.VALOR || '');
   }
 
   /** Digita e envia a mensagem */
