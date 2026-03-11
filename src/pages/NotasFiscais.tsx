@@ -454,6 +454,34 @@ export default function NotasFiscais() {
           cpf: r.dados?.cpf || null,
         }));
         await supabase.from('nfse_emitidas').upsert(dbRows, { onConflict: 'protocolo' });
+
+        // Auto-enqueue WhatsApp messages for successful emissions with chave
+        const whatsappItems = successResults
+          .filter((r: any) => r.chNFSe)
+          .map((r: any) => ({
+            protocolo: r.protocolo,
+            pacienteNome: r.dados?.pacienteNome || '',
+            cpf: r.dados?.cpf || '',
+            valor: Number(r.dados?.valor || 0),
+            chaveAcesso: r.chNFSe,
+          }));
+
+        if (whatsappItems.length > 0) {
+          try {
+            const enqueueResult = await api.enqueueNfseWhatsapp(whatsappItems);
+            const enqueued = enqueueResult.enqueued || 0;
+            const noPhone = enqueueResult.results?.filter((r: any) => !r.success && r.error?.includes('Telefone')).length || 0;
+            if (enqueued > 0) {
+              toast.success(`${enqueued} NFS-e(s) enfileirada(s) para envio via WhatsApp`);
+            }
+            if (noPhone > 0) {
+              toast.warning(`${noPhone} nota(s) sem telefone encontrado`);
+            }
+          } catch (enqErr) {
+            console.warn('Erro ao enfileirar WhatsApp NFS-e:', enqErr);
+            toast.warning('NFS-e emitida, mas falha ao enfileirar WhatsApp');
+          }
+        }
       }
 
       if (result.emitidas > 0) {
