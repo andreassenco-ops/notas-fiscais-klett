@@ -1,6 +1,6 @@
 /**
  * Bot Klett WhatsApp Sender v4.1 - PostgreSQL Local
- * 
+ *
  * Uso: node bot/index.js
  */
 const { Pool } = require('pg');
@@ -11,6 +11,7 @@ const { createLogger } = require('./logger');
 const { createQueue } = require('./queue');
 const { createSender } = require('./sender');
 const { setupCallSensor } = require('./call-sensor');
+const { cleanSessionCache } = require('./cache-cleaner');
 
 // PostgreSQL local em vez de Supabase Cloud
 const pool = new Pool({
@@ -40,6 +41,8 @@ async function main() {
   let browserContext, page;
 
   async function initBrowser() {
+    // Limpa cache pesado antes de abrir o navegador (preserva login)
+    cleanSessionCache(cfg.sessionPath);
     console.log(`⏳ [${horaBrasilia()}] Conectando ao Chrome...`);
     browserContext = await chromium.launchPersistentContext(cfg.sessionPath, {
       headless: false,
@@ -50,22 +53,44 @@ async function main() {
     });
     page = browserContext.pages()[0] || await browserContext.newPage();
     await page.goto('https://web.whatsapp.com', { waitUntil: 'networkidle', timeout: 90000 });
-    console.log('✅ WhatsApp Conectado.');
+    console.log('✅ WhatsApp Conectado. Aguardando carregamento completo dos chats (40s)...');
+    await delay(40000);
+    console.log('✅ Pronto para enviar.');
     await setupCallSensor(page);
   }
 
   await initBrowser();
 
+  // Limpeza periódica de cache (a cada 2h) sem reiniciar o browser
+  const CACHE_CLEAN_INTERVAL = 2 * 60 * 60 * 1000; // 2 horas
+  let lastCacheClean = Date.now();
+
   // --- Loop principal ---
   while (true) {
     try {
       if (!dentroDoHorario(cfg.workStart, cfg.workEnd)) {
+        // Fora do horário: aproveita para limpar cache
+        cleanSessionCache(cfg.sessionPath);
         console.log(`🌙 [${horaBrasilia()}] Fora do horário. Aguardando...`);
         await delay(cfg.offHoursDelay);
         continue;
       }
 
-      const result = await queue.next();
+      // Limpeza periódica durante execução
+      if (Date.now() - lastCacheClean > CACHE_CLEAN_INTERVAL) {
+        console.log(`🧹 [${horaBrasilia()}] Limpeza periódica de cache...`);
+        cleanSessionCache(cfg.sessionPath);
+        lastCacheClean = Date.now();
+      }
+
+      let result = await queue.next();
+      if (!result) {
+        // Fila vazia: tentar recolocar erros retentáveis
+        const retried = await queue.retryErrors();
+        if (retried > 0) {
+          result = await queue.next();
+        }
+      }
       if (!result) {
         process.stdout.write(`\r🔍 [${horaBrasilia()}] Fila vazia...`);
         await delay(cfg.emptyQueueDelay);
@@ -95,7 +120,7 @@ async function main() {
             await queue.markInvalid(item.id);
             await gravarLog(item, 'FALHA', 'Número Inválido');
           } else {
-            throw new Error('Timeout: O chat não carregou em 45 segundos.');
+            throw new Error('Timeout: O chat não carregou após 2 tentativas (90s cada).');
           }
         } else {
           const template = await queue.getTemplate(item.model_id);
