@@ -10,7 +10,9 @@ import { config } from './config';
 import { getWhatsAppSession, updateWhatsAppSession, logEvent, getWhatsAppLockStatus } from './supabase';
 import { checkRealConnection, getConnectionStats, isConnected, disconnect, getWorkerId, forceClientReset, resumeAutoReconnect, isAutoReconnectBlocked, sendMessage, getCooldownStatus } from './whatsapp';
 import * as pgRoutes from './pg-routes';
-import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, fetchDanfsePdf, NfseResult } from './nfse';
+import { emitirNFSeFromProtocolo, consultarNFSe, isNfseConfigured, fetchDanfsePdf, NfseResult, saveDanfsePdf, getDanfsePdfPath, getDanfseDir } from './nfse';
+import fs from 'fs';
+import path from 'path';
 
 const PORT = process.env.PORT || 3000;
 
@@ -1119,14 +1121,54 @@ async function handleNfseDanfse(url: URL, res: http.ServerResponse): Promise<voi
     return;
   }
 
+  // Check local cache first
+  const localPath = getDanfsePdfPath(chave);
+  if (localPath) {
+    console.log(`📂 DANFSE encontrado em cache local: ${localPath}`);
+    const pdfBuffer = fs.readFileSync(localPath);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, pdfBase64: pdfBuffer.toString('base64'), source: 'local' }));
+    return;
+  }
+
   try {
     const result = await fetchDanfsePdf(chave, ambiente);
+    if (result.success && result.pdfBase64) {
+      // Save to local cache
+      saveDanfsePdf(chave, result.pdfBase64);
+    }
     res.writeHead(result.success ? 200 : 422, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
   } catch (error) {
     console.error('❌ Erro ao buscar DANFSE:', error);
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' }));
+  }
+}
+
+/**
+ * Serve DANFSE PDF file directly (static route)
+ */
+async function handleDanfsePdfFile(url: URL, res: http.ServerResponse): Promise<void> {
+  const chave = url.searchParams.get('chave');
+  if (!chave) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Parâmetro chave é obrigatório' }));
+    return;
+  }
+
+  const localPath = getDanfsePdfPath(chave);
+  if (localPath && fs.existsSync(localPath)) {
+    const pdfBuffer = fs.readFileSync(localPath);
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="danfse_${chave.slice(-10)}.pdf"`,
+      'Content-Length': pdfBuffer.length.toString(),
+    });
+    res.end(pdfBuffer);
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'PDF não encontrado localmente' }));
   }
 }
 
@@ -1183,6 +1225,8 @@ export function startApiServer(): http.Server {
         await handleNfseEmitirLote(req, res);
       } else if (url.pathname === '/api/nfse/danfse' && req.method === 'GET') {
         await handleNfseDanfse(url, res);
+      } else if (url.pathname === '/api/nfse/danfse-pdf' && req.method === 'GET') {
+        await handleDanfsePdfFile(url, res);
       } else if (url.pathname === '/api/nfse/enqueue-whatsapp' && req.method === 'POST') {
         await handleNfseEnqueueWhatsapp(req, res);
 

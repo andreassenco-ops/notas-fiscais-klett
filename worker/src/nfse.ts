@@ -11,6 +11,41 @@ import https from 'https';
 import crypto from 'crypto';
 import tls from 'tls';
 import zlib from 'zlib';
+import fs from 'fs';
+import path from 'path';
+
+// ─── Pasta local para salvar PDFs ───
+const DANFSE_DIR = path.resolve(process.cwd(), 'danfse-pdfs');
+if (!fs.existsSync(DANFSE_DIR)) {
+  fs.mkdirSync(DANFSE_DIR, { recursive: true });
+}
+
+/**
+ * Salva o PDF do DANFSE em disco local
+ */
+export function saveDanfsePdf(chaveAcesso: string, pdfBase64: string, protocolo?: string): string {
+  const filename = protocolo
+    ? `${protocolo.replace(/[^a-zA-Z0-9\-_]/g, '_')}_${chaveAcesso.slice(-10)}.pdf`
+    : `${chaveAcesso}.pdf`;
+  const filepath = path.join(DANFSE_DIR, filename);
+  fs.writeFileSync(filepath, Buffer.from(pdfBase64, 'base64'));
+  console.log(`💾 DANFSE PDF salvo: ${filepath}`);
+  return filepath;
+}
+
+/**
+ * Retorna o caminho do PDF salvo, se existir
+ */
+export function getDanfsePdfPath(chaveAcesso: string): string | null {
+  // Procura qualquer arquivo que contenha a chave de acesso
+  const files = fs.readdirSync(DANFSE_DIR);
+  const match = files.find(f => f.includes(chaveAcesso) || f.includes(chaveAcesso.slice(-10)));
+  return match ? path.join(DANFSE_DIR, match) : null;
+}
+
+export function getDanfseDir(): string {
+  return DANFSE_DIR;
+}
 
 // ─── Tipos ───
 
@@ -518,16 +553,37 @@ export async function emitirNFSe(request: NfseRequest): Promise<NfseResult> {
       
       console.log(`📋 Números extraídos - nDFSe: ${nDFSe || 'N/A'}, nNFSe: ${nNFSe || 'N/A'}, nDPS: ${request.nDPS}`);
 
-      // Try to fetch DANFSE PDF
+      // Try to fetch DANFSE PDF (with retries for 502 errors)
       let pdfBase64: string | undefined;
       if (parsed?.chaveAcesso) {
-        try {
-          const danfse = await fetchDanfsePdf(parsed.chaveAcesso, request.ambiente);
-          if (danfse.success && danfse.pdfBase64) {
-            pdfBase64 = danfse.pdfBase64;
+        const MAX_DANFSE_RETRIES = 3;
+        const RETRY_DELAY_MS = 5000; // 5 seconds between retries
+
+        for (let attempt = 1; attempt <= MAX_DANFSE_RETRIES; attempt++) {
+          try {
+            console.log(`📄 Tentativa ${attempt}/${MAX_DANFSE_RETRIES} de buscar DANFSE...`);
+            const danfse = await fetchDanfsePdf(parsed.chaveAcesso, request.ambiente);
+            if (danfse.success && danfse.pdfBase64) {
+              pdfBase64 = danfse.pdfBase64;
+              // Salvar PDF em disco local
+              saveDanfsePdf(parsed.chaveAcesso, pdfBase64, request.protocolo);
+              break;
+            }
+            // Se falhou mas ainda tem tentativas, aguarda antes de tentar novamente
+            if (attempt < MAX_DANFSE_RETRIES) {
+              console.log(`⏳ Aguardando ${RETRY_DELAY_MS / 1000}s antes da próxima tentativa...`);
+              await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+            }
+          } catch (e) {
+            console.warn(`⚠️ Tentativa ${attempt} falhou:`, e);
+            if (attempt < MAX_DANFSE_RETRIES) {
+              await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+            }
           }
-        } catch (e) {
-          console.warn('⚠️ Falha ao buscar DANFSE PDF:', e);
+        }
+
+        if (!pdfBase64) {
+          console.warn('⚠️ Todas as tentativas de DANFSE falharam. PDF será buscado depois sob demanda.');
         }
       }
 
