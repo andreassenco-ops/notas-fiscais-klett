@@ -22,6 +22,6 @@ module.exports = {
 
   // Limites
   maxAttempts: 3,
-  chatTimeout: 45000,     // timeout para carregar chat
-  navTimeout: 40000,      // timeout para navegação
+  chatTimeout: 90000,     // timeout para carregar chat (90s para internet lenta)
+  navTimeout: 60000,      // timeout para navegação
 };

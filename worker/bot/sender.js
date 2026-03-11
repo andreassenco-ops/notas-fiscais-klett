@@ -7,24 +7,43 @@ function createSender(page, cfg) {
 
   /** Navega para o chat do número */
   async function openChat(phone) {
+    // networkidle: garante que o WhatsApp baixou todos os scripts
     await page.goto(`https://web.whatsapp.com/send?phone=${phone}`, {
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'networkidle',
       timeout: cfg.navTimeout,
     });
 
-    const input = await page.waitForSelector(
+    // visible: true garante que o campo está realmente pronto para digitar
+    let input = await page.waitForSelector(
       'footer div[contenteditable="true"]',
-      { timeout: cfg.chatTimeout }
+      { visible: true, timeout: cfg.chatTimeout }
     ).catch(() => null);
 
     if (!input) {
-      // Verifica popup de número inválido
+      // Verifica popup de número inválido ANTES de retry
       const okBtn = page.locator('button:has-text("OK"), [data-testid="popup-controls-ok"]').first();
       if (await okBtn.isVisible()) {
         await okBtn.click();
         return { ok: false, reason: 'INVALID_NUMBER' };
       }
-      return { ok: false, reason: 'TIMEOUT' };
+
+      // Chat travou na "bolinha girando" — reload para limpar o estado
+      console.log('🔄 Chat travado. Recarregando para tentar novamente...');
+      await page.reload({ waitUntil: 'networkidle', timeout: cfg.navTimeout });
+
+      input = await page.waitForSelector(
+        'footer div[contenteditable="true"]',
+        { visible: true, timeout: cfg.chatTimeout }
+      ).catch(() => null);
+
+      if (!input) {
+        const okBtn2 = page.locator('button:has-text("OK"), [data-testid="popup-controls-ok"]').first();
+        if (await okBtn2.isVisible()) {
+          await okBtn2.click();
+          return { ok: false, reason: 'INVALID_NUMBER' };
+        }
+        return { ok: false, reason: 'TIMEOUT' };
+      }
     }
 
     return { ok: true };
