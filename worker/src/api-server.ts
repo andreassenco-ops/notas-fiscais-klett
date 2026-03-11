@@ -968,6 +968,147 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
   }
 }
 
+// ─── NFS-e WhatsApp Enqueue ───
+
+async function handleNfseEnqueueWhatsapp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+  for await (const chunk of req) body += chunk;
+
+  try {
+    const items: Array<{
+      protocolo: string;
+      pacienteNome: string;
+      cpf: string;
+      valor: number;
+      chaveAcesso: string;
+    }> = JSON.parse(body).items || [];
+
+    if (!items.length) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'items é obrigatório' }));
+      return;
+    }
+
+    const pool = pgRoutes.getPgPool();
+
+    // 1. Ensure model 30 exists
+    const { rows: modelRows } = await pool.query(`SELECT id FROM models WHERE id = 30`);
+    if (modelRows.length === 0) {
+      await pool.query(
+        `INSERT INTO models (id, name, is_active, query_interval_minutes, delay_min_seconds, delay_max_seconds)
+         VALUES (30, 'NFS-e', true, 9999, 40, 100)`
+      );
+      console.log('✅ Model 30 (NFS-e) criado');
+    }
+
+    // 2. Ensure template message exists for model 30
+    const { rows: msgRows } = await pool.query(`SELECT id FROM model_messages WHERE model_id = 30 AND is_active = true LIMIT 1`);
+    if (msgRows.length === 0) {
+      await pool.query(
+        `INSERT INTO model_messages (model_id, message_index, body, is_active)
+         VALUES (30, 1, $1, true)`,
+        [`Olá *[[NOME]]*, sua Nota Fiscal de Serviço no valor de *R$ [[VALOR]]* foi emitida com sucesso.
+
+Consulte e baixe sua nota em:
+https://www.nfse.gov.br/consultapublica
+
+Chave de acesso: *[[CHAVE]]*
+
+Laboratório Klett 🔬`]
+      );
+      console.log('✅ Template NFS-e criado para model 30');
+    }
+
+    // 3. Get next sequence_num
+    const { rows: seqRows } = await pool.query(`SELECT COALESCE(MAX(sequence_num), 0) + 1 AS next_seq FROM send_queue`);
+    let nextSeq = Number(seqRows[0].next_seq);
+
+    const results: Array<{ protocolo: string; success: boolean; error?: string; phone?: string }> = [];
+
+    for (const item of items) {
+      try {
+        const cpfClean = item.cpf.replace(/\D/g, '');
+
+        // 4. Lookup phone: first from local PG send_queue, then SQL Server
+        let phone: string | null = null;
+
+        // Try local PG first (most reliable - already validated phones)
+        const { rows: phoneRows } = await pool.query(
+          `SELECT phone FROM send_queue WHERE cpf = $1 AND status = 'SENT' ORDER BY sent_at DESC LIMIT 1`,
+          [cpfClean]
+        );
+        if (phoneRows.length > 0) {
+          phone = phoneRows[0].phone;
+        }
+
+        // Fallback: try SQL Server
+        if (!phone) {
+          try {
+            const sqlPool = await getApiPool();
+            const sqlResult = await sqlPool.request()
+              .input('cpf', cpfClean)
+              .query(`SELECT TOP 1 CELULAR FROM PACIENTE WHERE REPLACE(REPLACE(CPF, '.', ''), '-', '') = @cpf AND CELULAR IS NOT NULL AND LEN(LTRIM(RTRIM(CELULAR))) > 8`);
+            if (sqlResult.recordset.length > 0) {
+              let raw = String(sqlResult.recordset[0].CELULAR).replace(/\D/g, '');
+              if (!raw.startsWith('55')) raw = '55' + raw;
+              phone = '+' + raw;
+            }
+          } catch (sqlErr) {
+            console.warn(`⚠️ SQL Server lookup falhou para CPF ${cpfClean}:`, sqlErr instanceof Error ? sqlErr.message : sqlErr);
+          }
+        }
+
+        if (!phone) {
+          results.push({ protocolo: item.protocolo, success: false, error: 'Telefone não encontrado' });
+          continue;
+        }
+
+        // 5. Check if already enqueued for this protocol + model 30
+        const { rows: existing } = await pool.query(
+          `SELECT id FROM send_queue WHERE protocol = $1 AND model_id = 30 LIMIT 1`,
+          [item.protocolo]
+        );
+        if (existing.length > 0) {
+          results.push({ protocolo: item.protocolo, success: true, phone, error: 'Já enfileirado' });
+          continue;
+        }
+
+        // 6. Insert into send_queue
+        await pool.query(
+          `INSERT INTO send_queue (protocol, cpf, patient_name, phone, result_link, model_id, sequence_num, status, variables)
+           VALUES ($1, $2, $3, $4, $5, 30, $6, 'PENDING', $7)`,
+          [
+            item.protocolo,
+            cpfClean,
+            item.pacienteNome,
+            phone,
+            `https://www.nfse.gov.br/consultapublica`,
+            nextSeq++,
+            JSON.stringify({
+              NOME: item.pacienteNome,
+              CHAVE: item.chaveAcesso,
+              VALOR: item.valor.toFixed(2).replace('.', ','),
+            }),
+          ]
+        );
+
+        results.push({ protocolo: item.protocolo, success: true, phone });
+        console.log(`📨 NFS-e enfileirada: ${item.protocolo} → ${phone}`);
+      } catch (err) {
+        results.push({ protocolo: item.protocolo, success: false, error: err instanceof Error ? err.message : 'Erro desconhecido' });
+      }
+    }
+
+    const enqueued = results.filter(r => r.success && r.error !== 'Já enfileirado').length;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results, enqueued, total: items.length }));
+  } catch (error) {
+    console.error('❌ Erro ao enfileirar NFS-e WhatsApp:', error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }));
+  }
+}
+
 async function handleNfseDanfse(url: URL, res: http.ServerResponse): Promise<void> {
   const chave = url.searchParams.get('chave');
   const ambiente = Number(url.searchParams.get('ambiente') || '1') as 1 | 2;
