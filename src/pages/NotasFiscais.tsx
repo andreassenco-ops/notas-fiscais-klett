@@ -468,12 +468,9 @@ export default function NotasFiscais() {
 
         if (whatsappItems.length > 0) {
           try {
-            const { data: enqueueResult, error: enqueueError } = await supabase.functions.invoke('nfse-enqueue-whatsapp', {
-              body: { items: whatsappItems },
-            });
-            if (enqueueError) throw enqueueError;
-            const enqueued = enqueueResult?.enqueued || 0;
-            const noPhone = enqueueResult?.results?.filter((r: any) => !r.success && r.error?.includes('Telefone')).length || 0;
+            const enqueueResult = await api.enqueueNfseWhatsapp(whatsappItems);
+            const enqueued = enqueueResult.enqueued || 0;
+            const noPhone = enqueueResult.results?.filter((r: any) => !r.success && r.error?.includes('Telefone')).length || 0;
             if (enqueued > 0) {
               toast.success(`${enqueued} NFS-e(s) enfileirada(s) para envio via WhatsApp`);
             }
