@@ -118,7 +118,23 @@ function createQueue(pool, cfg) {
     return rows.length > 0 ? rows[0].body : null;
   }
 
-  return { next, markSent, markError, markInvalid, getTemplate, getModelLabel };
+  /** Reseta ERROs retentáveis para PENDING (exclui "Número inválido") */
+  async function retryErrors() {
+    const { rowCount } = await pool.query(
+      `UPDATE send_queue
+         SET status = 'PENDING', attempts = 0, error_message = NULL
+       WHERE status = 'ERROR'
+         AND attempts < $1
+         AND (error_message IS NULL OR error_message NOT ILIKE '%número inválido%')`,
+      [cfg.maxAttempts]
+    );
+    if (rowCount > 0) {
+      console.log(`🔄 [RETRY] ${rowCount} erros resetados para PENDING`);
+    }
+    return rowCount;
+  }
+
+  return { next, markSent, markError, markInvalid, getTemplate, getModelLabel, retryErrors };
 }
 
 module.exports = { createQueue, getModelLabel, MODEL_NAMES };
