@@ -39,7 +39,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       {/* Logo + Toggle */}
-      <div className="flex h-14 items-center justify-between px-2 border-b border-sidebar-border bg-white">
+      <div className="flex h-14 items-center justify-between px-2 border-b border-sidebar-border bg-sidebar">
         {!collapsed && (
           <Link to="/">
             <img
