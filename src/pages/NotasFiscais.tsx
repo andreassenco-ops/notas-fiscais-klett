@@ -34,6 +34,7 @@ interface NotaFiscalRow {
   RECIBO: string;
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
+  DESCRICAO_EXAMES: string | null;
   [key: string]: unknown;
   // NFS-e state (client-side only)
   _nfseStatus?: "pending" | "emitting" | "success" | "error" | "already_emitted";
