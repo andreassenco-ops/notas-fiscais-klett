@@ -882,11 +882,7 @@ export default function NotasFiscais() {
                       <TableHead className="w-28">Protocolo</TableHead>
                       <TableHead className="w-24">Data Pgto</TableHead>
                       <TableHead>Paciente</TableHead>
-                      <TableHead className="w-36">CPF</TableHead>
-                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
-                      <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
-                      <TableHead>Descrição Serviço</TableHead>
                       <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
                         setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
                         setSelectedRows(new Set());
@@ -899,6 +895,10 @@ export default function NotasFiscais() {
                       <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
                       <TableHead className="w-48">Observação</TableHead>
+                      <TableHead className="w-36">CPF</TableHead>
+                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
+                      <TableHead>Convênio</TableHead>
+                      <TableHead>Descrição Serviço</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -920,26 +920,8 @@ export default function NotasFiscais() {
                         <TableCell className="font-medium max-w-[200px] truncate">
                           {row.NOME}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {formatCPF(String(row.CPF || ""))}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {row.RECIBO && row.RECIBO.trim() ? (
-                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
-                              {formatCPF(row.RECIBO.trim())}
-                            </span>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                            {row.CONVENIO || "—"}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="text-sm">
                           {row["FORMA DE PAGAMENTO"] || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
-                          {row.DESCRICAO_EXAMES || "—"}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
@@ -972,6 +954,24 @@ export default function NotasFiscais() {
                             />
                             {savingObs.has(row.PROTOCOLOC) && <Loader2 className="h-3 w-3 animate-spin" />}
                           </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {formatCPF(String(row.CPF || ""))}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {row.RECIBO && row.RECIBO.trim() ? (
+                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
+                              {formatCPF(row.RECIBO.trim())}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                            {row.CONVENIO || "—"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
+                          {row.DESCRICAO_EXAMES || "—"}
                         </TableCell>
                       </TableRow>
                     ))}
