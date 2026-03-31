@@ -882,11 +882,7 @@ export default function NotasFiscais() {
                       <TableHead className="w-28">Protocolo</TableHead>
                       <TableHead className="w-24">Data Pgto</TableHead>
                       <TableHead>Paciente</TableHead>
-                      <TableHead className="w-36">CPF</TableHead>
-                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
-                      <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
-                      <TableHead>Descrição Serviço</TableHead>
                       <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
                         setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
                         setSelectedRows(new Set());
@@ -899,6 +895,10 @@ export default function NotasFiscais() {
                       <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
                       <TableHead className="w-48">Observação</TableHead>
+                      <TableHead className="w-36">CPF</TableHead>
+                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
+                      <TableHead>Convênio</TableHead>
+                      <TableHead>Descrição Serviço</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
