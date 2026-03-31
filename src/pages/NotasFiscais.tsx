@@ -505,10 +505,10 @@ export default function NotasFiscais() {
         return next;
       });
 
-      // Save successful emissions to database
-      const successResults = result.results?.filter((r: any) => r.success);
-      if (successResults?.length > 0) {
-        const dbRows = successResults.map((r: any) => ({
+      // Save successful AND already-emitted results to database (both have valid chave_acesso)
+      const savableResults = result.results?.filter((r: any) => r.success || (r.jaEmitida && r.chNFSe));
+      if (savableResults?.length > 0) {
+        const dbRows = savableResults.map((r: any) => ({
           protocolo: r.protocolo,
           chave_acesso: r.chNFSe || null,
           numero_nota: r.nNFSe || r.nDFSe || null,
@@ -518,7 +518,7 @@ export default function NotasFiscais() {
           cpf: r.dados?.cpf || null,
         }));
         
-        // Save each row individually to avoid batch failures
+        // Save each row individually with error handling
         for (const dbRow of dbRows) {
           const { error: upsertError } = await supabase
             .from('nfse_emitidas')
