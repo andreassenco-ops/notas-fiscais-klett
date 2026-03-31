@@ -514,7 +514,7 @@ export default function NotasFiscais() {
     }
   };
 
-
+  const emitirSelecionadas = async () => {
     if (selectedRows.size === 0) {
       toast.warning("Selecione pelo menos um protocolo");
       return;
