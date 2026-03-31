@@ -833,9 +833,18 @@ export default function NotasFiscais() {
                       <TableHead className="w-24">Data Pgto</TableHead>
                       <TableHead>Paciente</TableHead>
                       <TableHead className="w-36">CPF</TableHead>
+                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
-                      <TableHead className="text-right w-32">Valor Total</TableHead>
+                      <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
+                        setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
+                        setSelectedRows(new Set());
+                      }}>
+                        <span className="inline-flex items-center gap-1">
+                          Valor Total
+                          {sortByValue === "desc" ? <ArrowDown className="h-3 w-3" /> : sortByValue === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+                        </span>
+                      </TableHead>
                       <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
                       <TableHead className="w-48">Observação</TableHead>
