@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter, Save, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter, Save, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -229,6 +229,7 @@ export default function NotasFiscais() {
   const [observacoes, setObservacoes] = useState<Map<string, string>>(new Map());
   const [savingObs, setSavingObs] = useState<Set<string>>(new Set());
   const [sortByValue, setSortByValue] = useState<"asc" | "desc" | null>(null);
+  const [recovering, setRecovering] = useState(false);
 
   // Helper: apply nfseStore state to rows
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
@@ -405,6 +406,111 @@ export default function NotasFiscais() {
       setSelectedRows(new Set());
     } else {
       setSelectedRows(new Set(filteredRows.map((_, i) => i)));
+    }
+  };
+
+  // Recovery: re-emit all protocols without saved emission to recover keys from national system
+  const recuperarEmissoes = async () => {
+    // Find protocols that have no emission record in the database
+    const protocolosSemChave = filteredRows.filter(
+      (row) => !nfseStore.get(row.PROTOCOLOC)?.chave && row.CPF && Number(row["VALOR TOTAL DO PAGAMENTO"]) > 0
+    );
+
+    if (protocolosSemChave.length === 0) {
+      toast.info("Todas as notas já estão salvas no banco");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Recuperar ${protocolosSemChave.length} protocolo(s) sem registro no banco?\n\nIsso vai re-enviar ao sistema nacional, que detectará as já emitidas e retornará as chaves de acesso.`
+    );
+    if (!confirmed) return;
+
+    setRecovering(true);
+    let recovered = 0;
+    let errors = 0;
+    const BATCH_SIZE = 10;
+
+    try {
+      for (let i = 0; i < protocolosSemChave.length; i += BATCH_SIZE) {
+        const batch = protocolosSemChave.slice(i, i + BATCH_SIZE);
+        const items = batch.map((r) => ({
+          protocolo: r.PROTOCOLOC,
+          pacienteNome: r.NOME,
+          cpf: r.RECIBO && r.RECIBO.trim() ? r.RECIBO.replace(/\D/g, "") : String(r.CPF).replace(/\D/g, ""),
+          valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
+          formaPagamento: r["FORMA DE PAGAMENTO"],
+          dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
+          descricaoServico: r.DESCRICAO_EXAMES || undefined,
+        }));
+
+        try {
+          const result = await api.emitirNfseLote(items, 1);
+
+          // Save ALL results that have a chave (success or already_emitted)
+          const savable = result.results?.filter((r: any) => r.chNFSe) || [];
+          for (const r of savable) {
+            const { error: upsertError } = await supabase
+              .from('nfse_emitidas')
+              .upsert({
+                protocolo: r.protocolo,
+                chave_acesso: r.chNFSe || null,
+                numero_nota: r.nNFSe || r.nDFSe || null,
+                ndps: r.nDPS || null,
+                valor: r.dados?.valor || null,
+                paciente_nome: r.dados?.pacienteNome || null,
+                cpf: r.dados?.cpf || null,
+              }, { onConflict: 'protocolo' });
+
+            if (!upsertError) {
+              recovered++;
+              // Update local state
+              setNfseStore((prev) => {
+                const next = new Map(prev);
+                next.set(r.protocolo, {
+                  status: r.success ? "success" : "already_emitted",
+                  chave: r.chNFSe,
+                  numero: r.nNFSe || r.nDFSe || r.nDPS,
+                });
+                return next;
+              });
+              setRows((prev) =>
+                prev.map((row) =>
+                  row.PROTOCOLOC === r.protocolo
+                    ? {
+                        ...row,
+                        _nfseStatus: r.success ? "success" : "already_emitted",
+                        _nfseChave: r.chNFSe,
+                        _nfseNumero: r.nNFSe || r.nDFSe || r.nDPS,
+                      }
+                    : row
+                )
+              );
+            } else {
+              console.error(`Erro ao salvar ${r.protocolo}:`, upsertError);
+              errors++;
+            }
+          }
+
+          // Count errors from emission
+          const emissionErrors = result.results?.filter((r: any) => !r.success && !r.jaEmitida) || [];
+          errors += emissionErrors.length;
+
+          toast.info(`Lote ${Math.floor(i / BATCH_SIZE) + 1}: ${savable.length} recuperado(s)`);
+        } catch (batchErr) {
+          console.error(`Erro no lote ${i}:`, batchErr);
+          errors += batch.length;
+        }
+      }
+
+      if (recovered > 0) {
+        toast.success(`${recovered} nota(s) recuperada(s) com sucesso!`);
+      }
+      if (errors > 0) {
+        toast.warning(`${errors} protocolo(s) com erro na recuperação`);
+      }
+    } finally {
+      setRecovering(false);
     }
   };
 
@@ -842,18 +948,33 @@ export default function NotasFiscais() {
                   <Send className="h-5 w-5 text-primary" />
                   <span className="font-medium">Emissão NFS-e Nacional — Produção</span>
                 </div>
-                <Button
-                  onClick={emitirSelecionadas}
-                  disabled={selectedRows.size === 0 || emittingLote}
-                  className="gap-2"
-                >
-                  {emittingLote ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={recuperarEmissoes}
+                    disabled={recovering || emittingLote}
+                    className="gap-2"
+                  >
+                    {recovering ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {recovering ? "Recuperando..." : "Recuperar Emissões"}
+                  </Button>
+                  <Button
+                    onClick={emitirSelecionadas}
+                    disabled={selectedRows.size === 0 || emittingLote || recovering}
+                    className="gap-2"
+                  >
+                    {emittingLote ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
