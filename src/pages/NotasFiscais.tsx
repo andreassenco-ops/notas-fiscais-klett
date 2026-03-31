@@ -446,6 +446,7 @@ export default function NotasFiscais() {
         valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
         formaPagamento: r["FORMA DE PAGAMENTO"],
         dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
+        descricaoServico: r.DESCRICAO_EXAMES || undefined,
       }));
 
       const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
