@@ -557,7 +557,7 @@ export default function NotasFiscais() {
   const exportCSV = () => {
     if (!filteredRows.length) return;
     const displayCols = [
-      "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF",
+      "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF", "RECIBO",
       "FORMA DE PAGAMENTO", "VALOR TOTAL DO PAGAMENTO", "OBSERVAÇÃO"
     ];
     const extraHeader = "Nº Nota Fiscal";
