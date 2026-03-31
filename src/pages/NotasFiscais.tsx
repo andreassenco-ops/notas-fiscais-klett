@@ -393,7 +393,7 @@ export default function NotasFiscais() {
       const items = selectedItems.map((r) => ({
         protocolo: r.PROTOCOLOC,
         pacienteNome: r.NOME,
-        cpf: String(r.CPF).replace(/\D/g, ""),
+        cpf: r.RECIBO && r.RECIBO.trim() ? r.RECIBO.replace(/\D/g, "") : String(r.CPF).replace(/\D/g, ""),
         valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
         formaPagamento: r["FORMA DE PAGAMENTO"],
         dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
