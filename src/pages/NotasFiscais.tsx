@@ -285,11 +285,14 @@ export default function NotasFiscais() {
           const dbStore = new Map<string, NfseState>();
           const obsMap = new Map<string, string>();
           for (const e of emitidas) {
-            dbStore.set(e.protocolo, {
-              status: "success",
-              chave: e.chave_acesso || undefined,
-              numero: e.numero_nota || e.ndps || undefined,
-            });
+            // Only mark as emitted if chave_acesso exists (actual NFS-e was issued)
+            if (e.chave_acesso) {
+              dbStore.set(e.protocolo, {
+                status: "success",
+                chave: e.chave_acesso,
+                numero: e.numero_nota || e.ndps || undefined,
+              });
+            }
             if (e.observacao) obsMap.set(e.protocolo, e.observacao);
           }
           setObservacoes((prev) => {
