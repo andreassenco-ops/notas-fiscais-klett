@@ -530,7 +530,7 @@ export default function NotasFiscais() {
         }
 
         // Auto-enqueue WhatsApp messages for successful emissions with chave
-        const whatsappItems = successResults
+        const whatsappItems = savableResults.filter((r: any) => r.success)
           .filter((r: any) => r.chNFSe)
           .map((r: any) => ({
             protocolo: r.protocolo,
