@@ -30,6 +30,7 @@ interface NotaFiscalRow {
   NOME: string;
   CPF: string;
   OBSERVAÇÃO: string;
+  RECIBO: string;
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
   [key: string]: unknown;
