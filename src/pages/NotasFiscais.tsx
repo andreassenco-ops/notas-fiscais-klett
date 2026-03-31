@@ -948,18 +948,33 @@ export default function NotasFiscais() {
                   <Send className="h-5 w-5 text-primary" />
                   <span className="font-medium">Emissão NFS-e Nacional — Produção</span>
                 </div>
-                <Button
-                  onClick={emitirSelecionadas}
-                  disabled={selectedRows.size === 0 || emittingLote}
-                  className="gap-2"
-                >
-                  {emittingLote ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={recuperarEmissoes}
+                    disabled={recovering || emittingLote}
+                    className="gap-2"
+                  >
+                    {recovering ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {recovering ? "Recuperando..." : "Recuperar Emissões"}
+                  </Button>
+                  <Button
+                    onClick={emitirSelecionadas}
+                    disabled={selectedRows.size === 0 || emittingLote || recovering}
+                    className="gap-2"
+                  >
+                    {emittingLote ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Emitir {selectedRows.size > 0 ? `${selectedRows.size} NFS-e(s)` : "NFS-e"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
