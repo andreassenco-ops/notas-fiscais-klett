@@ -39,7 +39,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       {/* Logo + Toggle */}
-      <div className="flex h-14 items-center justify-between px-2 border-b border-sidebar-border bg-sidebar">
+      <div className="flex h-14 items-center justify-between px-2 border-b border-sidebar-border bg-white">
         {!collapsed && (
           <Link to="/">
             <img
@@ -51,7 +51,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         )}
         <button
           onClick={onToggle}
-          className="p-1.5 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent transition-colors"
+          className="p-1.5 rounded-lg text-green-800 hover:bg-sidebar-accent transition-colors"
           title={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? (
