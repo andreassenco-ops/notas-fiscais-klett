@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 
 interface NotaFiscalRow {
   PROTOCOLOC: string;
+  GUIA_ID: number | null;
   "DATA DO PAGAMENTO": string;
   CONVENIO: string;
   NOME: string;
