@@ -886,6 +886,7 @@ export default function NotasFiscais() {
                       <TableHead className="w-36">NF p/ Terceiro</TableHead>
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
+                      <TableHead>Descrição Serviço</TableHead>
                       <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
                         setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
                         setSelectedRows(new Set());
