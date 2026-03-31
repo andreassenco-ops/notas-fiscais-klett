@@ -208,6 +208,27 @@ interface NfseState {
   pdfUrl?: string;
 }
 
+const NFSE_STORE_KEY = 'klett_nfse_store';
+
+function loadNfseStoreFromStorage(): Map<string, NfseState> {
+  try {
+    const raw = localStorage.getItem(NFSE_STORE_KEY);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as Array<[string, NfseState]>;
+    return new Map(parsed);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveNfseStoreToStorage(store: Map<string, NfseState>) {
+  try {
+    // Only persist entries with chave (actual emissions)
+    const entries = Array.from(store.entries()).filter(([, v]) => v.chave);
+    localStorage.setItem(NFSE_STORE_KEY, JSON.stringify(entries));
+  } catch { /* ignore */ }
+}
+
 export default function NotasFiscais() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<NotaFiscalRow[]>([]);
@@ -216,7 +237,7 @@ export default function NotasFiscais() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [emittingLote, setEmittingLote] = useState(false);
   const [ambiente] = useState<"1">("1");
-  const [nfseStore, setNfseStore] = useState<Map<string, NfseState>>(new Map());
+  const [nfseStore, setNfseStore] = useState<Map<string, NfseState>>(() => loadNfseStoreFromStorage());
   const [availablePaymentTypes, setAvailablePaymentTypes] = useState<string[]>([]);
   const [excludedPaymentTypes, setExcludedPaymentTypes] = useState<Set<string>>(new Set(["DINHEIRO", "DINHEIROTOX", "CARTAO CREDITO TOX"]));
   const [paymentFilterOpen, setPaymentFilterOpen] = useState(false);
@@ -230,6 +251,39 @@ export default function NotasFiscais() {
   const [savingObs, setSavingObs] = useState<Set<string>>(new Set());
   const [sortByValue, setSortByValue] = useState<"asc" | "desc" | null>(null);
   const [recovering, setRecovering] = useState(false);
+  const autoSyncDone = useRef(false);
+
+  // Save nfseStore to localStorage whenever it changes
+  useEffect(() => {
+    saveNfseStoreToStorage(nfseStore);
+  }, [nfseStore]);
+
+  // Auto-sync localStorage entries to database on first load
+  useEffect(() => {
+    if (autoSyncDone.current) return;
+    autoSyncDone.current = true;
+
+    const stored = loadNfseStoreFromStorage();
+    const entriesToSave = Array.from(stored.entries()).filter(([, v]) => v.chave);
+    if (entriesToSave.length === 0) return;
+
+    (async () => {
+      let saved = 0;
+      for (const [protocolo, state] of entriesToSave) {
+        const { error } = await supabase
+          .from('nfse_emitidas')
+          .upsert({
+            protocolo,
+            chave_acesso: state.chave || null,
+            numero_nota: state.numero || null,
+          }, { onConflict: 'protocolo' });
+        if (!error) saved++;
+      }
+      if (saved > 0) {
+        console.log(`Auto-sync: ${saved} nota(s) sincronizada(s) do localStorage para o banco`);
+      }
+    })();
+  }, []);
 
   // Helper: apply nfseStore state to rows
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
