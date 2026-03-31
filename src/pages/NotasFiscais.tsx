@@ -511,14 +511,23 @@ export default function NotasFiscais() {
         const dbRows = successResults.map((r: any) => ({
           protocolo: r.protocolo,
           chave_acesso: r.chNFSe || null,
-          // Persistir nNFSe para manter alinhado com o número da nota exibido no portal
           numero_nota: r.nNFSe || r.nDFSe || null,
           ndps: r.nDPS || null,
           valor: r.dados?.valor || null,
           paciente_nome: r.dados?.pacienteNome || null,
           cpf: r.dados?.cpf || null,
         }));
-        await supabase.from('nfse_emitidas').upsert(dbRows, { onConflict: 'protocolo' });
+        
+        // Save each row individually to avoid batch failures
+        for (const dbRow of dbRows) {
+          const { error: upsertError } = await supabase
+            .from('nfse_emitidas')
+            .upsert(dbRow, { onConflict: 'protocolo' });
+          if (upsertError) {
+            console.error(`Erro ao salvar NFS-e ${dbRow.protocolo}:`, upsertError);
+            toast.error(`Erro ao salvar nota ${dbRow.protocolo} no banco: ${upsertError.message}`);
+          }
+        }
 
         // Auto-enqueue WhatsApp messages for successful emissions with chave
         const whatsappItems = successResults
