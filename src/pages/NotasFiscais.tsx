@@ -315,12 +315,12 @@ export default function NotasFiscais() {
     }
   };
 
-  // Apply payment type filter, then text search
+  // Apply payment type filter, then text search, then sort
   const paymentFilteredRows = rows.filter(
     (row) => !excludedPaymentTypes.has(row["FORMA DE PAGAMENTO"])
   );
 
-  const filteredRows = searchTerm
+  const textFilteredRows = searchTerm
     ? paymentFilteredRows.filter((row) =>
         Object.values(row).some(
           (val) =>
@@ -330,6 +330,14 @@ export default function NotasFiscais() {
         )
       )
     : paymentFilteredRows;
+
+  const filteredRows = sortByValue
+    ? [...textFilteredRows].sort((a, b) => {
+        const va = Number(a["VALOR TOTAL DO PAGAMENTO"]) || 0;
+        const vb = Number(b["VALOR TOTAL DO PAGAMENTO"]) || 0;
+        return sortByValue === "asc" ? va - vb : vb - va;
+      })
+    : textFilteredRows;
 
   const toggleSelect = (idx: number) => {
     setSelectedRows((prev) => {
