@@ -409,105 +409,59 @@ export default function NotasFiscais() {
     }
   };
 
-  // Recovery: re-emit all protocols without saved emission to recover keys from national system
-  const recuperarEmissoes = async () => {
-    // Find protocols that have no emission record in the database
-    const protocolosSemChave = filteredRows.filter(
-      (row) => !nfseStore.get(row.PROTOCOLOC)?.chave && row.CPF && Number(row["VALOR TOTAL DO PAGAMENTO"]) > 0
-    );
+  // Sync: save all in-memory nfseStore entries (with chave) to the database
+  const sincronizarComBanco = async () => {
+    // Find entries in nfseStore that have a chave_acesso
+    const entriesToSave: Array<{ protocolo: string; state: NfseState }> = [];
+    nfseStore.forEach((state, protocolo) => {
+      if (state.chave) {
+        entriesToSave.push({ protocolo, state });
+      }
+    });
 
-    if (protocolosSemChave.length === 0) {
-      toast.info("Todas as notas já estão salvas no banco");
+    if (entriesToSave.length === 0) {
+      toast.info("Nenhuma nota com chave de acesso na memória para sincronizar");
       return;
     }
 
     const confirmed = window.confirm(
-      `Recuperar ${protocolosSemChave.length} protocolo(s) sem registro no banco?\n\nIsso vai re-enviar ao sistema nacional, que detectará as já emitidas e retornará as chaves de acesso.`
+      `Sincronizar ${entriesToSave.length} nota(s) da memória do navegador para o banco de dados?\n\nIsso vai garantir que todos os usuários vejam as notas emitidas.`
     );
     if (!confirmed) return;
 
     setRecovering(true);
-    let recovered = 0;
+    let saved = 0;
     let errors = 0;
-    const BATCH_SIZE = 10;
 
     try {
-      for (let i = 0; i < protocolosSemChave.length; i += BATCH_SIZE) {
-        const batch = protocolosSemChave.slice(i, i + BATCH_SIZE);
-        const items = batch.map((r) => ({
-          protocolo: r.PROTOCOLOC,
-          pacienteNome: r.NOME,
-          cpf: r.RECIBO && r.RECIBO.trim() ? r.RECIBO.replace(/\D/g, "") : String(r.CPF).replace(/\D/g, ""),
-          valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
-          formaPagamento: r["FORMA DE PAGAMENTO"],
-          dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
-          descricaoServico: r.DESCRICAO_EXAMES || undefined,
-        }));
+      for (const entry of entriesToSave) {
+        // Find matching row for extra data
+        const matchingRow = rows.find(r => r.PROTOCOLOC === entry.protocolo);
+        
+        const { error: upsertError } = await supabase
+          .from('nfse_emitidas')
+          .upsert({
+            protocolo: entry.protocolo,
+            chave_acesso: entry.state.chave || null,
+            numero_nota: entry.state.numero || null,
+            valor: matchingRow ? Number(matchingRow["VALOR TOTAL DO PAGAMENTO"]) || null : null,
+            paciente_nome: matchingRow?.NOME || null,
+            cpf: matchingRow?.CPF ? String(matchingRow.CPF).replace(/\D/g, "") : null,
+          }, { onConflict: 'protocolo' });
 
-        try {
-          const result = await api.emitirNfseLote(items, 1);
-
-          // Save ALL results that have a chave (success or already_emitted)
-          const savable = result.results?.filter((r: any) => r.chNFSe) || [];
-          for (const r of savable) {
-            const { error: upsertError } = await supabase
-              .from('nfse_emitidas')
-              .upsert({
-                protocolo: r.protocolo,
-                chave_acesso: r.chNFSe || null,
-                numero_nota: r.nNFSe || r.nDFSe || null,
-                ndps: r.nDPS || null,
-                valor: r.dados?.valor || null,
-                paciente_nome: r.dados?.pacienteNome || null,
-                cpf: r.dados?.cpf || null,
-              }, { onConflict: 'protocolo' });
-
-            if (!upsertError) {
-              recovered++;
-              // Update local state
-              setNfseStore((prev) => {
-                const next = new Map(prev);
-                next.set(r.protocolo, {
-                  status: r.success ? "success" : "already_emitted",
-                  chave: r.chNFSe,
-                  numero: r.nNFSe || r.nDFSe || r.nDPS,
-                });
-                return next;
-              });
-              setRows((prev) =>
-                prev.map((row) =>
-                  row.PROTOCOLOC === r.protocolo
-                    ? {
-                        ...row,
-                        _nfseStatus: r.success ? "success" : "already_emitted",
-                        _nfseChave: r.chNFSe,
-                        _nfseNumero: r.nNFSe || r.nDFSe || r.nDPS,
-                      }
-                    : row
-                )
-              );
-            } else {
-              console.error(`Erro ao salvar ${r.protocolo}:`, upsertError);
-              errors++;
-            }
-          }
-
-          // Count errors from emission
-          const emissionErrors = result.results?.filter((r: any) => !r.success && !r.jaEmitida) || [];
-          errors += emissionErrors.length;
-
-          toast.info(`Lote ${Math.floor(i / BATCH_SIZE) + 1}: ${savable.length} recuperado(s)`);
-        } catch (batchErr) {
-          console.error(`Erro no lote ${i}:`, batchErr);
-          errors += batch.length;
+        if (!upsertError) {
+          saved++;
+        } else {
+          console.error(`Erro ao salvar ${entry.protocolo}:`, upsertError);
+          errors++;
         }
       }
 
-      if (recovered > 0) {
-        toast.success(`${recovered} nota(s) recuperada(s) com sucesso!`);
+      if (saved > 0) {
+        toast.success(`${saved} nota(s) sincronizada(s) com o banco!`);
       }
       if (errors > 0) {
-        toast.warning(`${errors} protocolo(s) com erro na recuperação`);
+        toast.warning(`${errors} erro(s) na sincronização`);
       }
     } finally {
       setRecovering(false);
@@ -951,16 +905,16 @@ export default function NotasFiscais() {
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
-                    onClick={recuperarEmissoes}
+                    onClick={sincronizarComBanco}
                     disabled={recovering || emittingLote}
                     className="gap-2"
                   >
                     {recovering ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <RefreshCw className="h-4 w-4" />
+                      <Save className="h-4 w-4" />
                     )}
-                    {recovering ? "Recuperando..." : "Recuperar Emissões"}
+                    {recovering ? "Sincronizando..." : "Sincronizar com Banco"}
                   </Button>
                   <Button
                     onClick={emitirSelecionadas}
