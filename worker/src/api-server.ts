@@ -922,6 +922,7 @@ async function handleNfseEmitirLote(req: http.IncomingMessage, res: http.ServerR
         ambiente: ambiente || 2,
         nDPS,
         dataAtendimento: item.dataAtendimento,
+        descricaoServico: item.descricaoServico,
       });
 
       results.push({

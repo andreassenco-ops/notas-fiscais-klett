@@ -34,6 +34,7 @@ interface NotaFiscalRow {
   RECIBO: string;
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
+  DESCRICAO_EXAMES: string | null;
   [key: string]: unknown;
   // NFS-e state (client-side only)
   _nfseStatus?: "pending" | "emitting" | "success" | "error" | "already_emitted";
@@ -54,7 +55,14 @@ function buildQuery(dateFrom: string, dateTo: string): string {
   PACIENTE.NOME_PAI [OBSERVAÇÃO],
   ISNULL(SOLICITACAO.OBS_RECIBO, '') AS RECIBO,
   'REEMBOLSO' AS [FORMA DE PAGAMENTO],
-  SUM(SOLICITACAO_EXAMES_GUIA.VALOR) [VALOR TOTAL DO PAGAMENTO]
+  SUM(SOLICITACAO_EXAMES_GUIA.VALOR) [VALOR TOTAL DO PAGAMENTO],
+  STUFF((
+    SELECT ', ' + SEG2.DESCRICAO
+    FROM SOLICITACAO_EXAMES_GUIA SEG2
+    WHERE SEG2.SOLICITACAO_GUIA_ID = SOLICITACAO_GUIA.ID
+    ORDER BY SEG2.ID
+    FOR XML PATH(''), TYPE
+  ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS DESCRICAO_EXAMES
 FROM SOLICITACAO
 INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_EXAMES_GUIA ON SOLICITACAO_EXAMES_GUIA.SOLICITACAO_GUIA_ID = SOLICITACAO_GUIA.ID
@@ -91,7 +99,8 @@ SELECT
   PACIENTE.NOME_PAI [OBSERVAÇÃO],
   ISNULL(SOLICITACAO.OBS_RECIBO, '') AS RECIBO,
   UPPER(LTRIM(RTRIM(SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO))) [FORMA DE PAGAMENTO],
-  SUM(SOLICITACAO_PAGAMENTOS.VALOR) [VALOR TOTAL DO PAGAMENTO]
+  SUM(SOLICITACAO_PAGAMENTOS.VALOR) [VALOR TOTAL DO PAGAMENTO],
+  NULL AS DESCRICAO_EXAMES
 FROM SOLICITACAO
 INNER JOIN SOLICITACAO_GUIA ON SOLICITACAO_GUIA.SOLICITACAO_ID = SOLICITACAO.ID
 INNER JOIN SOLICITACAO_PAGAMENTOS ON SOLICITACAO_GUIA.ID = SOLICITACAO_PAGAMENTOS.SOLICITACAO_GUIA_ID
@@ -437,6 +446,7 @@ export default function NotasFiscais() {
         valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
         formaPagamento: r["FORMA DE PAGAMENTO"],
         dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
+        descricaoServico: r.DESCRICAO_EXAMES || undefined,
       }));
 
       const result = await api.emitirNfseLote(items, Number(ambiente) as 1 | 2);
@@ -876,6 +886,7 @@ export default function NotasFiscais() {
                       <TableHead className="w-36">NF p/ Terceiro</TableHead>
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
+                      <TableHead>Descrição Serviço</TableHead>
                       <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
                         setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
                         setSelectedRows(new Set());
@@ -926,6 +937,9 @@ export default function NotasFiscais() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {row["FORMA DE PAGAMENTO"] || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
+                          {row.DESCRICAO_EXAMES || "—"}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}

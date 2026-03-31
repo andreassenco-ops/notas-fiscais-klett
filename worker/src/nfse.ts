@@ -695,6 +695,7 @@ export async function emitirNFSeFromProtocolo(params: {
   ambiente?: 1 | 2;
   nDPS: string;
   dataAtendimento?: string; // YYYY-MM-DD format from frontend
+  descricaoServico?: string; // Custom service description (e.g. exam names for REEMBOLSO)
 }): Promise<NfseResult> {
   const hoje = new Date().toISOString().slice(0, 10);
   
@@ -704,6 +705,11 @@ export async function emitirNFSeFromProtocolo(params: {
   const parts = dataBase.split('-');
   const dataAtend = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : dataBase;
 
+  // Use custom service description if provided, otherwise default
+  const servico: NfseServico = params.descricaoServico
+    ? { ...KLETT_SERVICO_PADRAO, xDescServ: params.descricaoServico }
+    : KLETT_SERVICO_PADRAO;
+
   return emitirNFSe({
     ambiente: params.ambiente || 2,
     emissor: KLETT_EMISSOR,
@@ -711,7 +717,7 @@ export async function emitirNFSeFromProtocolo(params: {
       cpf: params.cpf,
       nome: params.pacienteNome,
     },
-    servico: KLETT_SERVICO_PADRAO,
+    servico,
     valores: {
       vServ: params.valor,
       aliqISS: 3.00,

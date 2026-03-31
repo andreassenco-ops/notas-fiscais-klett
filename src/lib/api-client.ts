@@ -235,6 +235,7 @@ export const api = {
     valor: number;
     formaPagamento?: string;
     dataAtendimento?: string;
+    descricaoServico?: string;
   }>, ambiente?: 1 | 2) => workerFetch<{
     results: Array<{ protocolo: string; success: boolean; chNFSe?: string; nNFSe?: string; nDFSe?: string; nDPS?: string; pdfBase64?: string; xmlRetorno?: string; error?: string; jaEmitida?: boolean; dados?: { pacienteNome: string; cpf: string; valor: number; formaPagamento?: string } }>;
     total: number;
