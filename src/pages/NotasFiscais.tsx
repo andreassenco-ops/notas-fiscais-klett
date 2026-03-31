@@ -229,6 +229,7 @@ export default function NotasFiscais() {
   const [observacoes, setObservacoes] = useState<Map<string, string>>(new Map());
   const [savingObs, setSavingObs] = useState<Set<string>>(new Set());
   const [sortByValue, setSortByValue] = useState<"asc" | "desc" | null>(null);
+  const [recovering, setRecovering] = useState(false);
 
   // Helper: apply nfseStore state to rows
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
