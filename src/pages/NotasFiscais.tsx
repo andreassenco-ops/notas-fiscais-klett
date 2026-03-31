@@ -872,6 +872,13 @@ export default function NotasFiscais() {
                         <TableCell className="font-mono text-sm">
                           {formatCPF(String(row.CPF || ""))}
                         </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {row.RECIBO && row.RECIBO.trim() ? (
+                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
+                              {formatCPF(row.RECIBO.trim())}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="text-xs whitespace-nowrap">
                             {row.CONVENIO || "—"}
