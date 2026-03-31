@@ -905,16 +905,16 @@ export default function NotasFiscais() {
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
-                    onClick={recuperarEmissoes}
+                    onClick={sincronizarComBanco}
                     disabled={recovering || emittingLote}
                     className="gap-2"
                   >
                     {recovering ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <RefreshCw className="h-4 w-4" />
+                      <Save className="h-4 w-4" />
                     )}
-                    {recovering ? "Recuperando..." : "Recuperar Emissões"}
+                    {recovering ? "Sincronizando..." : "Sincronizar com Banco"}
                   </Button>
                   <Button
                     onClick={emitirSelecionadas}
