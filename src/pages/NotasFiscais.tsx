@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter, Save } from "lucide-react";
+import { Loader2, Search, FileText, Download, Send, CheckCircle2, XCircle, AlertTriangle, FileDown, CalendarIcon, Filter, Save, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ interface NotaFiscalRow {
   NOME: string;
   CPF: string;
   OBSERVAÇÃO: string;
+  RECIBO: string;
   "FORMA DE PAGAMENTO": string;
   "VALOR TOTAL DO PAGAMENTO": number | null;
   [key: string]: unknown;
@@ -49,6 +50,7 @@ function buildQuery(dateFrom: string, dateTo: string): string {
   PACIENTE.NOME,
   PACIENTE.CPF,
   PACIENTE.NOME_PAI [OBSERVAÇÃO],
+  ISNULL(SOLICITACAO_GUIA.RECIBO, '') AS RECIBO,
   UPPER(LTRIM(RTRIM(SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO))) [FORMA DE PAGAMENTO],
   SUM(SOLICITACAO_PAGAMENTOS.VALOR) [VALOR TOTAL DO PAGAMENTO]
 FROM SOLICITACAO
@@ -64,6 +66,7 @@ GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
   PACIENTE.NOME,
   PACIENTE.CPF,
   PACIENTE.NOME_PAI,
+  SOLICITACAO_GUIA.RECIBO,
   SOLICITACAO_PAGAMENTOS.FORMA_PAGAMENTO`;
 }
 
@@ -176,6 +179,7 @@ export default function NotasFiscais() {
   const [dateTo, setDateTo] = useState<Date>(yesterday);
   const [observacoes, setObservacoes] = useState<Map<string, string>>(new Map());
   const [savingObs, setSavingObs] = useState<Set<string>>(new Set());
+  const [sortByValue, setSortByValue] = useState<"asc" | "desc" | null>(null);
 
   // Helper: apply nfseStore state to rows
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
@@ -311,12 +315,12 @@ export default function NotasFiscais() {
     }
   };
 
-  // Apply payment type filter, then text search
+  // Apply payment type filter, then text search, then sort
   const paymentFilteredRows = rows.filter(
     (row) => !excludedPaymentTypes.has(row["FORMA DE PAGAMENTO"])
   );
 
-  const filteredRows = searchTerm
+  const textFilteredRows = searchTerm
     ? paymentFilteredRows.filter((row) =>
         Object.values(row).some(
           (val) =>
@@ -326,6 +330,14 @@ export default function NotasFiscais() {
         )
       )
     : paymentFilteredRows;
+
+  const filteredRows = sortByValue
+    ? [...textFilteredRows].sort((a, b) => {
+        const va = Number(a["VALOR TOTAL DO PAGAMENTO"]) || 0;
+        const vb = Number(b["VALOR TOTAL DO PAGAMENTO"]) || 0;
+        return sortByValue === "asc" ? va - vb : vb - va;
+      })
+    : textFilteredRows;
 
   const toggleSelect = (idx: number) => {
     setSelectedRows((prev) => {
@@ -381,7 +393,7 @@ export default function NotasFiscais() {
       const items = selectedItems.map((r) => ({
         protocolo: r.PROTOCOLOC,
         pacienteNome: r.NOME,
-        cpf: String(r.CPF).replace(/\D/g, ""),
+        cpf: r.RECIBO && r.RECIBO.trim() ? r.RECIBO.replace(/\D/g, "") : String(r.CPF).replace(/\D/g, ""),
         valor: Number(r["VALOR TOTAL DO PAGAMENTO"]),
         formaPagamento: r["FORMA DE PAGAMENTO"],
         dataAtendimento: String(r["DATA DO PAGAMENTO"] || ""),
@@ -545,7 +557,7 @@ export default function NotasFiscais() {
   const exportCSV = () => {
     if (!filteredRows.length) return;
     const displayCols = [
-      "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF",
+      "PROTOCOLOC", "DATA DO PAGAMENTO", "CONVENIO", "NOME", "CPF", "RECIBO",
       "FORMA DE PAGAMENTO", "VALOR TOTAL DO PAGAMENTO", "OBSERVAÇÃO"
     ];
     const extraHeader = "Nº Nota Fiscal";
@@ -821,9 +833,18 @@ export default function NotasFiscais() {
                       <TableHead className="w-24">Data Pgto</TableHead>
                       <TableHead>Paciente</TableHead>
                       <TableHead className="w-36">CPF</TableHead>
+                      <TableHead className="w-36">NF p/ Terceiro</TableHead>
                       <TableHead>Convênio</TableHead>
                       <TableHead>Forma Pgto</TableHead>
-                      <TableHead className="text-right w-32">Valor Total</TableHead>
+                      <TableHead className="text-right w-32 cursor-pointer select-none" onClick={() => {
+                        setSortByValue(prev => prev === null ? "desc" : prev === "desc" ? "asc" : null);
+                        setSelectedRows(new Set());
+                      }}>
+                        <span className="inline-flex items-center gap-1">
+                          Valor Total
+                          {sortByValue === "desc" ? <ArrowDown className="h-3 w-3" /> : sortByValue === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+                        </span>
+                      </TableHead>
                       <TableHead className="w-24">Nº Nota</TableHead>
                       <TableHead>NFS-e</TableHead>
                       <TableHead className="w-48">Observação</TableHead>
@@ -850,6 +871,13 @@ export default function NotasFiscais() {
                         </TableCell>
                         <TableCell className="font-mono text-sm">
                           {formatCPF(String(row.CPF || ""))}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {row.RECIBO && row.RECIBO.trim() ? (
+                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
+                              {formatCPF(row.RECIBO.trim())}
+                            </span>
+                          ) : "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="text-xs whitespace-nowrap">
