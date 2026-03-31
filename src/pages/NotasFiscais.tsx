@@ -920,26 +920,8 @@ export default function NotasFiscais() {
                         <TableCell className="font-medium max-w-[200px] truncate">
                           {row.NOME}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {formatCPF(String(row.CPF || ""))}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {row.RECIBO && row.RECIBO.trim() ? (
-                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
-                              {formatCPF(row.RECIBO.trim())}
-                            </span>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                            {row.CONVENIO || "—"}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="text-sm">
                           {row["FORMA DE PAGAMENTO"] || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
-                          {row.DESCRICAO_EXAMES || "—"}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
@@ -972,6 +954,24 @@ export default function NotasFiscais() {
                             />
                             {savingObs.has(row.PROTOCOLOC) && <Loader2 className="h-3 w-3 animate-spin" />}
                           </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {formatCPF(String(row.CPF || ""))}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {row.RECIBO && row.RECIBO.trim() ? (
+                            <span className="text-primary font-medium" title="NFS-e será emitida para este CPF">
+                              {formatCPF(row.RECIBO.trim())}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                            {row.CONVENIO || "—"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
+                          {row.DESCRICAO_EXAMES || "—"}
                         </TableCell>
                       </TableRow>
                     ))}
