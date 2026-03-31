@@ -44,9 +44,7 @@ interface NotaFiscalRow {
 }
 
 function buildQuery(dateFrom: string, dateTo: string): string {
-  return `
--- Reembolso: uma linha por guia
-SELECT 
+  return `SELECT 
   SOLICITACAO.LOCAL + '-' + RIGHT('000000' + CAST(SOLICITACAO.PROTOCOLO AS VARCHAR), 6) AS PROTOCOLOC,
   SOLICITACAO_GUIA.ID AS GUIA_ID,
   CONVERT(VARCHAR(10), SOLICITACAO_PAGAMENTOS.DATA, 23) AS [DATA DO PAGAMENTO],
@@ -77,7 +75,6 @@ GROUP BY SOLICITACAO.LOCAL, SOLICITACAO.PROTOCOLO,
 
 UNION ALL
 
--- Demais formas: uma linha por protocolo (aglutinado)
 SELECT 
   SOLICITACAO.LOCAL + '-' + RIGHT('000000' + CAST(SOLICITACAO.PROTOCOLO AS VARCHAR), 6) AS PROTOCOLOC,
   NULL AS GUIA_ID,
