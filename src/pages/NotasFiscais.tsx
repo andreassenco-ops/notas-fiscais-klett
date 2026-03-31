@@ -938,6 +938,10 @@ export default function NotasFiscais() {
                         <TableCell className="text-sm">
                           {row["FORMA DE PAGAMENTO"] || "—"}
                         </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate" title={row.DESCRICAO_EXAMES || ""}>
+                          {row.DESCRICAO_EXAMES || "—"}
+                        </TableCell>
+                        </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(row["VALOR TOTAL DO PAGAMENTO"])}
                         </TableCell>
