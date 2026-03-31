@@ -595,10 +595,15 @@ export default function NotasFiscais() {
     setSavingObs((prev) => new Set(prev).add(protocolo));
     try {
       // Upsert into nfse_emitidas with just observacao
-      await supabase.from('nfse_emitidas').upsert(
+      const { error: upsertError } = await supabase.from('nfse_emitidas').upsert(
         { protocolo, observacao: obs || null },
         { onConflict: 'protocolo' }
       );
+      if (upsertError) {
+        console.error('Erro ao salvar observação:', upsertError);
+        toast.error(`Erro ao salvar: ${upsertError.message}`);
+        return;
+      }
       setObservacoes((prev) => {
         const next = new Map(prev);
         next.set(protocolo, obs);
