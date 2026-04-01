@@ -478,10 +478,6 @@ export default function NotasFiscais() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Sincronizar ${entriesToSave.length} nota(s) da memória do navegador para o banco de dados?\n\nIsso vai garantir que todos os usuários vejam as notas emitidas.`
-    );
-    if (!confirmed) return;
 
     setRecovering(true);
     let saved = 0;
