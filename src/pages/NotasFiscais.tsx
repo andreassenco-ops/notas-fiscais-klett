@@ -215,7 +215,9 @@ function loadNfseStoreFromStorage(): Map<string, NfseState> {
     const raw = localStorage.getItem(NFSE_STORE_KEY);
     if (!raw) return new Map();
     const parsed = JSON.parse(raw) as Array<[string, NfseState]>;
-    return new Map(parsed);
+    // Only load entries that have actual emission data (chave_acesso)
+    const filtered = parsed.filter(([, v]) => v.chave);
+    return new Map(filtered);
   } catch {
     return new Map();
   }
