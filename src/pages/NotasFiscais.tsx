@@ -215,7 +215,9 @@ function loadNfseStoreFromStorage(): Map<string, NfseState> {
     const raw = localStorage.getItem(NFSE_STORE_KEY);
     if (!raw) return new Map();
     const parsed = JSON.parse(raw) as Array<[string, NfseState]>;
-    return new Map(parsed);
+    // Only load entries that have actual emission data (chave_acesso)
+    const filtered = parsed.filter(([, v]) => v.chave);
+    return new Map(filtered);
   } catch {
     return new Map();
   }
@@ -289,7 +291,8 @@ export default function NotasFiscais() {
   const applyNfseState = (rawRows: NotaFiscalRow[], store: Map<string, NfseState>): NotaFiscalRow[] => {
     return rawRows.map((row) => {
       const saved = store.get(row.PROTOCOLOC);
-      if (saved) {
+      // Only apply NFS-e status if there's actual emission data (chave_acesso)
+      if (saved && saved.chave) {
         return {
           ...row,
           _nfseStatus: saved.status,
@@ -297,6 +300,14 @@ export default function NotasFiscais() {
           _nfseNumero: saved.numero,
           _nfseError: saved.error,
           _nfsePdfUrl: saved.pdfUrl,
+        };
+      }
+      // If entry exists without chave (e.g. only observation), preserve emitting/error status but don't mark as emitted
+      if (saved && (saved.status === "emitting" || saved.status === "error")) {
+        return {
+          ...row,
+          _nfseStatus: saved.status,
+          _nfseError: saved.error,
         };
       }
       return row;
