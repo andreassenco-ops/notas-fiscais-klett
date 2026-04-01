@@ -947,6 +947,31 @@ export default function NotasFiscais() {
           </div>
         )}
 
+        {/* Sync button - always visible */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <Save className="h-5 w-5 text-primary" />
+                <span className="font-medium">Sincronização de dados locais</span>
+              </div>
+              <Button
+                variant="outline"
+                onClick={sincronizarComBanco}
+                disabled={recovering || emittingLote}
+                className="gap-2"
+              >
+                {recovering ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {recovering ? "Sincronizando..." : "Sincronizar com Banco"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* NFS-e Emission Controls */}
         {hasQueried && filteredRows.length > 0 && (
           <Card>
@@ -957,19 +982,6 @@ export default function NotasFiscais() {
                   <span className="font-medium">Emissão NFS-e Nacional — Produção</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={sincronizarComBanco}
-                    disabled={recovering || emittingLote}
-                    className="gap-2"
-                  >
-                    {recovering ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    {recovering ? "Sincronizando..." : "Sincronizar com Banco"}
-                  </Button>
                   <Button
                     onClick={emitirSelecionadas}
                     disabled={selectedRows.size === 0 || emittingLote || recovering}
